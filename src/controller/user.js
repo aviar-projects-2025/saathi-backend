@@ -1,11 +1,20 @@
 const { userCreateService, getAllUsers } = require('../service/user');
+const bcrypt = require('bcrypt')
 
 // create user
 const createUser = async (req, res) => {
   try {
-    const data = req.body;
+    const { firstName, lastName, email, dob, password } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await userCreateService({
+      firstName,
+      lastName,
+      email,
+      dob,
+      password: hashedPassword
+    });
 
-    const user = await userCreateService(data);
+    console.log(user, 'hashed')
 
     res.status(201).json({
       success: true,
@@ -21,19 +30,19 @@ const createUser = async (req, res) => {
 };
 
 // get All Users
-const getUsers = async (req, res) =>{
+const getUsers = async (req, res) => {
   try {
     const users = await getAllUsers();
 
     res.status(200).json({
-      success : true,
+      success: true,
       count: users.length,
-      data : users
+      data: users
     })
   } catch (error) {
     res.status(500).json({
-      success : false,
-      message : error.message,
+      success: false,
+      message: error.message,
     })
   }
 }
