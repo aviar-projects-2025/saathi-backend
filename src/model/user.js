@@ -12,7 +12,7 @@ const userSchema = new mongoose.Schema({
     email: {
         type: String,
         required: true,
-        unique : true
+        unique: true
     },
     dob: {
         type: String,
@@ -26,6 +26,16 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ["USER", "ADMIN"],
         default: "USER",
+    },
+    referralCode: {
+        type: String,
+        unique: true,
+    },
+
+    referredBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
     },
 
 })

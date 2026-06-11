@@ -12,7 +12,22 @@ const getAllUsers = async () =>{
     return user
 }
 
+const loggedinUser = async (email)=>{
+  // Find user by email
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    return user;
+} 
+
 module.exports = {
     userCreateService,
     getAllUsers,
+    loggedinUser,
 }
