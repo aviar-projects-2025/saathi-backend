@@ -12,6 +12,11 @@ const getAllUsers = async () =>{
     return user
 }
 
+const getUserById = async (id) => {
+  const user = await User.findById(id);
+  return user
+}
+
 const loggedinUser = async (email)=>{
   // Find user by email
     const user = await User.findOne({ email });

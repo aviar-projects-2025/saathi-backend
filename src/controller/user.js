@@ -1,4 +1,9 @@
-const { userCreateService, getAllUsers, loggedinUser } = require('../service/user');
+const {
+  userCreateService,
+  getAllUsers,
+  loggedinUser,
+  getUserById,
+} = require('../service/user');
 const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken');
 const User = require('../model/user');
@@ -90,6 +95,27 @@ const getUsers = async (req, res) => {
   }
 }
 
+// get user by id;
+const getSingleUser = async (req, res) => {
+
+  try {
+
+    const { id } = req.params;
+    const user = await getUserById(id);
+
+    res.status(200).json({
+      success: true,
+      data: user
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    })
+  }
+
+}
+
 // Login user
 const loginUser = async (req, res) => {
   try {
@@ -116,7 +142,7 @@ const loginUser = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Login successful",
-      token : generateToken(user),
+      token: generateToken(user),
       user: data
     });
 
@@ -132,4 +158,5 @@ module.exports = {
   createUser,
   getUsers,
   loginUser,
+  getSingleUser,
 };
