@@ -11,10 +11,16 @@ const getAllRideService = async () => {
     return await Ride.find();
 }
 
+// Get single Ride
+const getRideById = async (id) => {
+    return await Ride.findById(id);
+}
+
 
 
 
 module.exports = {
     createRideService,
     getAllRideService,
+    getRideById,
 }

@@ -1,8 +1,7 @@
-const { 
+const {
     createRideService,
     getAllRideService,
- } = require("../service/ride");
-
+} = require("../service/ride");
 
 // Create Ride
 const createRide = async (req, res) => {
@@ -26,20 +25,37 @@ const getRides = async (req, res) => {
     try {
         const rides = await getAllRideService();
         res.status(200).json({
-            success : true,
-            totalRides : rides.length,
-            data : rides,
+            success: true,
+            totalRides: rides.length,
+            data: rides,
         })
     } catch (error) {
         res.status(500).json({
-            success : false,
-            message : error.message
+            success: false,
+            message: error.message
         })
     }
 }
 
+//Get All Rides 
+const getUserRides = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const ride = await getRideById(id);
+        res.status(200).json({
+            success: true,
+            data: ride,
+        })
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        })
+    }
+}
 
 module.exports = {
     createRide,
     getRides,
+    getUserRides,
 }
