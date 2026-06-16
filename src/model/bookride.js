@@ -1,10 +1,10 @@
 import mongoose from "mongoose";
 
 
-const bookRide = new mongoose.Schema(
+const bookRideSchema = new mongoose.Schema(
     {
         createdBy:{
-            type: moongose.Schema.Types.ObjectId,
+            type: moongoose.Schema.Types.ObjectId,
             ref:"User",
             required:true,
         },
@@ -60,5 +60,5 @@ const bookRide = new mongoose.Schema(
     
 );
 
-const bookRide = mongoose.model("BookRide", rideSchema);
+const bookRide = mongoose.model("BookRide", bookRideSchema);
 export default bookRide
