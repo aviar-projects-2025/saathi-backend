@@ -39,8 +39,7 @@ const createUser = async (req, res) => {
 
     if (referralCode) {
       referredBy = await User.findOne({ referralCode });
-
-      if (!referredBy) {
+       if (!referredBy) {
         return res.status(400).json({
           success: false,
           message: "Invalid referral code",
