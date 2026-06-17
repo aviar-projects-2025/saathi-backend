@@ -16,6 +16,11 @@ const getRideById = async (id) => {
     return await Ride.findById(id);
 }
 
+// edit service
+const updateRideService = async (id, data) => {
+    return await Ride.findByIdAndUpdate(id, data, { new: true });
+}
+
 
 
 
@@ -23,4 +28,5 @@ module.exports = {
     createRideService,
     getAllRideService,
     getRideById,
+    updateRideService,
 }
