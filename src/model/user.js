@@ -30,12 +30,14 @@ const userSchema = new mongoose.Schema({
     referralCode: {
         type: String,
         unique: true,
+        required : true,
     },
 
     referredBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
         default: null,
+        required : true,
     },
 
 })
