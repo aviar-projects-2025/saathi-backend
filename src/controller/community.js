@@ -1,9 +1,43 @@
-import { createPostService,getPostsService } from "../service/community.js";
+import cloudinary from "../../config/cloudinary.js";
+import streamifier from 'streamifier'
+import { createPostService, getPostsService } from "../service/community.js";
+
+
+const uploadToCloudinary = (buffer) => {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder: "saathi-posts",
+                resource_type: "image",
+            },
+            (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            }
+        );
+
+        streamifier.createReadStream(buffer).pipe(stream);
+    });
+};
+
 
 export const createPost = async (req, res) => {
     try {
-        const data = req.body;
+
+        let imageUrl = "";
+
+        if (req.file) {
+            const result = await uploadToCloudinary(req.file.buffer);
+            imageUrl = result.secure_url;
+        }
+
+        const data = {
+            ...req.body,
+            postImage: imageUrl,
+        };
+
         console.log(data,'data')
+
         const post = await createPostService(data);
         res.status(201).json({
             success: true,

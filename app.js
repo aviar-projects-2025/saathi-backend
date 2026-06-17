@@ -1,7 +1,6 @@
 import express from 'express'
 import cors from 'cors'
 
-
 import userRoutes from './src/routes/userRoutes.js'
 import rideRoutes from './src/routes/rideRoutes.js'
 import communityRoutes from './src/routes/communityRoutes.js'
