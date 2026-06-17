@@ -1,16 +1,16 @@
-const {
+import {
   userCreateService,
   getAllUsers,
   loggedinUser,
   getUserById,
-} = require('../service/user');
-const bcrypt = require('bcrypt')
-const jwt = require('jsonwebtoken');
-const User = require('../model/user');
+} from '../service/user.js'
+import bcrypt from 'bcrypt'
+import jwt from 'jsonwebtoken'
+import User from '../model/user.js'
 
 
 // Token Generation
-const generateToken = (user) => {
+export const generateToken = (user) => {
   return jwt.sign(
     {
       id: user._id,
@@ -24,7 +24,7 @@ const generateToken = (user) => {
   );
 };
 
-const createUser = async (req, res) => {
+export const createUser = async (req, res) => {
   try {
     const {
       firstName,
@@ -77,7 +77,7 @@ const createUser = async (req, res) => {
 };
 
 // get All Users
-const getUsers = async (req, res) => {
+export const getUsers = async (req, res) => {
   try {
     const users = await getAllUsers();
 
@@ -95,7 +95,7 @@ const getUsers = async (req, res) => {
 }
 
 // get user by id;
-const getSingleUser = async (req, res) => {
+export const getSingleUser = async (req, res) => {
 
   try {
 
@@ -116,7 +116,7 @@ const getSingleUser = async (req, res) => {
 }
 
 // Login user
-const loginUser = async (req, res) => {
+export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await loggedinUser(email);
@@ -152,10 +152,3 @@ const loginUser = async (req, res) => {
     })
   }
 }
-
-module.exports = {
-  createUser,
-  getUsers,
-  loginUser,
-  getSingleUser,
-};

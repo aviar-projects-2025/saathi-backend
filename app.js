@@ -1,17 +1,19 @@
-const express = require("express");
-const cors = require('cors')
+import express from 'express'
+import cors from 'cors'
+
+
+import userRoutes from './src/routes/userRoutes.js'
+import rideRoutes from './src/routes/rideRoutes.js'
+import communityRoutes from './src/routes/communityRoutes.js'
 
 const app = express();
-
-const userRoutes = require('./src/routes/userRoutes')
-const rideRoutes = require('./src/routes/rideRoutes')
-
-
 
 app.use(express.json());
 app.use(cors());
 
+
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/rides", rideRoutes)
+app.use("/api/v1/community", communityRoutes)
 
-module.exports = app;
+export default app

@@ -1,32 +1,21 @@
-const Ride = require('../model/ride')
-
+import Ride from '../model/ride.js'
 
 // create ride
-const createRideService = async (data) => {
+export const createRideService = async (data) => {
     return await Ride.create(data);
 }
 
 // get all 
-const getAllRideService = async () => {
-    return await Ride.find();
+export const getAllRideService = async () => {
+    return await Ride.find().populate("createdBy", "firstName lastName");
 }
 
 // Get single Ride
-const getRideById = async (id) => {
+export const getRideById = async (id) => {
     return await Ride.findById(id);
 }
 
 // edit service
-const updateRideService = async (id, data) => {
+export const updateRideService = async (id, data) => {
     return await Ride.findByIdAndUpdate(id, data, { new: true });
-}
-
-
-
-
-module.exports = {
-    createRideService,
-    getAllRideService,
-    getRideById,
-    updateRideService,
 }

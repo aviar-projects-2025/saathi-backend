@@ -1,11 +1,11 @@
-const {
+import {
     createRideService,
     getAllRideService,
     updateRideService,
-} = require("../service/ride");
+} from '../service/ride.js'
 
 // Create Ride
-const createRide = async (req, res) => {
+export const createRide = async (req, res) => {
     try {
         const data = req.body;
         const ride = await createRideService(data);
@@ -22,7 +22,7 @@ const createRide = async (req, res) => {
 }
 
 //Get All Rides 
-const getRides = async (req, res) => {
+export const getRides = async (req, res) => {
     try {
         const rides = await getAllRideService();
         res.status(200).json({
@@ -39,7 +39,7 @@ const getRides = async (req, res) => {
 }
 
 // Update
-const editRide = async (req, res) => {
+export const editRide = async (req, res) => {
     try {
         const { id } = req.params
         const data = req.body
@@ -49,7 +49,7 @@ const editRide = async (req, res) => {
 
 
         const updatedRide = await updateRideService(id, data);
-        console.log(updatedRide,'updateRide')
+        console.log(updatedRide, 'updateRide')
         res.status(200).json({
             status: true,
             data: updatedRide
@@ -66,7 +66,7 @@ const editRide = async (req, res) => {
 // Delete
 
 //Get All Rides 
-const getUserRides = async (req, res) => {
+export const getUserRides = async (req, res) => {
     const { id } = req.params;
     try {
         const ride = await getRideById(id);
@@ -80,11 +80,4 @@ const getUserRides = async (req, res) => {
             message: error.message
         })
     }
-}
-
-module.exports = {
-    createRide,
-    getRides,
-    getUserRides,
-    editRide,
 }
