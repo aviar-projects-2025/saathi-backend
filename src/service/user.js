@@ -1,23 +1,22 @@
-const User = require('../model/user');
-
+import User from '../model/user.js'
 // User Service 
 
-const userCreateService = async (userData) => {
+export const userCreateService = async (userData) => {
   const user = await User.create(userData);
   return user;
 };
 
-const getAllUsers = async () =>{
+export const getAllUsers = async () =>{
     const user = await User.find({}, {password : 0, __v : 0});
     return user
 }
 
-const getUserById = async (id) => {
+export const getUserById = async (id) => {
   const user = await User.findById(id);
   return user
 }
 
-const loggedinUser = async (email)=>{
+export const loggedinUser = async (email)=>{
   // Find user by email
     const user = await User.findOne({ email });
 
@@ -30,9 +29,3 @@ const loggedinUser = async (email)=>{
 
     return user;
 } 
-
-module.exports = {
-    userCreateService,
-    getAllUsers,
-    loggedinUser,
-}

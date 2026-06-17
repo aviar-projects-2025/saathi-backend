@@ -1,5 +1,5 @@
-const express = require('express');
-const { createRide, getRides, editRide } = require('../controller/ride');
+import express from 'express'
+import { createRide, getRides, editRide } from '../controller/ride.js'
 
 const router = express.Router();
 
@@ -8,4 +8,4 @@ router.post("/", createRide);
 router.patch("/edit/:id", editRide);
 // router.delete("/:id");
 
-module.exports = router;
+export default router

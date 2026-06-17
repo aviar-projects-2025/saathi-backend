@@ -1,4 +1,4 @@
-const  mongoose  = require("mongoose")
+import mongoose from 'mongoose'
 
 const rideSchema = new mongoose.Schema({
     createdBy: {
@@ -57,4 +57,6 @@ const rideSchema = new mongoose.Schema({
     timestamps: true
 })
 
-module.exports = mongoose.model('Ride', rideSchema)
+const Ride = mongoose.model('Ride', rideSchema)
+
+export default Ride
