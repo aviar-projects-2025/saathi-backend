@@ -4,8 +4,8 @@ import {
   loggedinUser,
   getUserById,
 } from '../service/user.js'
-import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
+import bcrypt from 'bcrypt'
 import User from '../model/user.js'
 
 
@@ -26,44 +26,7 @@ export const generateToken = (user) => {
 
 export const createUser = async (req, res) => {
   try {
-    const {
-      firstName,
-      lastName,
-      email,
-      dob,
-      password,
-      referralCode,
-    } = req.body;
-
-    let referredBy = null;
-
-    if (referralCode) {
-      referredBy = await User.findOne({ referralCode });
-
-      if (!referredBy) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid referral code",
-        });
-      }
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const myReferralCode =
-      firstName.substring(0, 3).toUpperCase() +
-      Math.floor(1000 + Math.random() * 9000);
-
-    const user = await userCreateService({
-      firstName,
-      lastName,
-      email,
-      dob,
-      password: hashedPassword,
-      referralCode: myReferralCode,
-      referredBy: referredBy?._id,
-    });
-
+    const user = await userCreateService(req.body);
     res.status(201).json({
       success: true,
       message: "User created successfully",
@@ -122,6 +85,7 @@ export const loginUser = async (req, res) => {
     const { email, password } = req.body;
     const user = await loggedinUser(email);
 
+
     const isMatch = await bcrypt.compare(password, user?.password)
 
     if (!isMatch) {
@@ -137,6 +101,7 @@ export const loginUser = async (req, res) => {
       lastName: user.lastName,
       email: user.email,
       role: user.role,
+      refApprove: user.refApprove,
     }
 
     return res.status(200).json({
