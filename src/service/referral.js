@@ -11,3 +11,7 @@ export const getReferralService = async (id) => {
 export const updateService = async (id, data) => {
     return await User.findByIdAndUpdate(id, data, { new: true })
 }
+
+export const removeService = async (id) => {
+    return await User.findByIdAndDelete(id)
+}
