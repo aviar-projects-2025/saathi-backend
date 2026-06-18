@@ -1,6 +1,6 @@
 import express from "express";
 import {
-  createBookride,
+  requestRide,
   getBookride,
   editBookride,
   deleteBookride,
@@ -9,7 +9,7 @@ import {
 const router = express.Router();
 
 router.get("/", getBookride);
-router.post("/create", createBookride);
+router.post("/create/:rideId", requestRide);
 router.put("/edit", editBookride);      // use PUT for update
 router.delete("/delete", deleteBookride);
 

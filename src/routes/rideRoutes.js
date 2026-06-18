@@ -3,7 +3,7 @@ import { createRide, getRides, editRide } from '../controller/ride.js'
 
 const router = express.Router();
 
-router.get("/", getRides);
+router.get("/get", getRides);
 router.post("/", createRide);
 router.patch("/edit/:id", editRide);
 // router.delete("/:id");

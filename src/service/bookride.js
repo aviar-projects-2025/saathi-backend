@@ -1,4 +1,4 @@
-import bookRide from "../model/bookride"
+import bookRide from "../model/bookride.js"
 
 const createBookRideService = async (data) =>{
     return await bookRide.create(data)
