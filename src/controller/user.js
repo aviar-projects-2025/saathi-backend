@@ -26,7 +26,44 @@ export const generateToken = (user) => {
 
 export const createUser = async (req, res) => {
   try {
-    const user = await userCreateService(req.body);
+    // const user = await userCreateService(req.body);
+    const {
+      firstName,
+      lastName,
+      email,
+      dob,
+      password,
+      referralCode,
+    } = req.body;
+
+    let referredBy = null;
+
+    if (referralCode) {
+      referredBy = await User.findOne({ referralCode });
+       if (!referredBy) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid referral code",
+        });
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const myReferralCode =
+      firstName.substring(0, 3).toUpperCase() +
+      Math.floor(1000 + Math.random() * 9000);
+
+    const user = await userCreateService({
+      firstName,
+      lastName,
+      email,
+      dob,
+      password: hashedPassword,
+      referralCode: myReferralCode,
+      referredBy: referredBy?._id,
+    });
+
     res.status(201).json({
       success: true,
       message: "User created successfully",
