@@ -26,7 +26,6 @@ export const generateToken = (user) => {
 
 export const createUser = async (req, res) => {
   try {
-    // const user = await userCreateService(req.body);
     const {
       firstName,
       lastName,
@@ -39,13 +38,16 @@ export const createUser = async (req, res) => {
     let referredBy = null;
 
     if (referralCode) {
-      referredBy = await User.findOne({ referralCode });
-       if (!referredBy) {
+      const referredUser = await User.findOne({ referralCode });
+
+      if (!referredUser) {
         return res.status(400).json({
           success: false,
           message: "Invalid referral code",
         });
       }
+
+      referredBy = referredUser._id;
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -61,7 +63,8 @@ export const createUser = async (req, res) => {
       dob,
       password: hashedPassword,
       referralCode: myReferralCode,
-      referredBy: referredBy?._id,
+      referredBy,
+      refApprove: referralCode ? "Waiting" : "Approved",
     });
 
     res.status(201).json({
@@ -76,7 +79,6 @@ export const createUser = async (req, res) => {
     });
   }
 };
-
 // get All Users
 export const getUsers = async (req, res) => {
   try {
