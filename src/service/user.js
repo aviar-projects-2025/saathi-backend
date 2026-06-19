@@ -16,14 +16,7 @@ export const getUserById = async (id) => {
 }
 
 export const loggedinUser = async (email) => {
-  const user = await User.findOne({ email });
-
-  if (!user) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid email or password",
-    });
-  }
+  
 
   return user;
 } 
