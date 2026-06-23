@@ -1,6 +1,7 @@
 import cloudinary from "../../config/cloudinary.js";
 import streamifier from 'streamifier'
 import { createPostService, getPostsService } from "../service/community.js";
+import { getLikedPostService, likePostService, unlikePostService } from "../service/likes.js";
 
 
 const uploadToCloudinary = (buffer) => {
@@ -36,7 +37,7 @@ export const createPost = async (req, res) => {
             postImage: imageUrl,
         };
 
-        console.log(data,'data')
+        console.log(data, 'data')
 
         const post = await createPostService(data);
         res.status(201).json({
@@ -66,3 +67,59 @@ export const getPosts = async (req, res) => {
         })
     }
 }
+
+export const likePost = async (req, res) => {
+    try {
+        const { postId, userId } = req.params;
+
+        const result = await likePostService(postId, userId);
+
+        console.log(result, 'result')
+
+        return res.status(200).json({
+            success: true,
+            ...result,
+        });
+    } catch (error) {
+        return res.status(400).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
+export const unlikePost = async (req, res) => {
+    try {
+        const { postId, userId } = req.params;
+
+        const result = await unlikePostService(postId, userId);
+
+        return res.status(200).json({
+            success: true,
+            ...result,
+        });
+    } catch (error) {
+        return res.status(400).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
+export const getLikedPost = async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const likedPostIds = await getLikedPostService(userId);
+
+        return res.status(200).json({
+            success: true,
+            data: likedPostIds,
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};

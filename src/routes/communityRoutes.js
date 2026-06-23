@@ -1,6 +1,6 @@
 import express from 'express'
 import multer from 'multer'
-import { createPost,getPosts } from '../controller/community.js';
+import { createPost,getPosts} from '../controller/community.js';
 import { getUploadSignature } from '../../config/cloudinary.js';
 
 const router = express.Router();

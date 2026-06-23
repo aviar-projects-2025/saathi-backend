@@ -15,14 +15,10 @@ const communitySchema = new mongoose.Schema({
         ref: "User",
         required: true,
     },
-
-    likes: [
-        {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
-        }
-    ],
-
+    likes: {
+        type: Number,
+        default: 0,
+    },
     comments: [
         {
             userId: {

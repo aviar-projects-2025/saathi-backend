@@ -6,6 +6,8 @@ import rideRoutes from './src/routes/rideRoutes.js'
 import communityRoutes from './src/routes/communityRoutes.js'
 import referralRoutes from './src/routes/referralRoutes.js'
 import bookrideRouter from "./src/routes/bookrideRouter.js"
+import likeRoutes from "./src/routes/likeRoutes.js"
+
 
 const app = express();
 
@@ -17,6 +19,8 @@ app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/rides", rideRoutes)
 app.use("/api/v1/community", communityRoutes)
 app.use("/api/v1/referrals", referralRoutes)
+app.use("/api/v1/likes", likeRoutes)
+
 
 
 export default app

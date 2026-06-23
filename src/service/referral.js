@@ -5,7 +5,7 @@ export const getReferralService = async (id) => {
     return await User.find(
         { referredBy: id },
         "firstName lastName email createdAt refApprove",
-    ).sort({ createdAt: -1 });;
+    ).sort({ createdAt: -1 });
 }
 
 export const updateService = async (id, data) => {
