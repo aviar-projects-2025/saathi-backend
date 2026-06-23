@@ -142,6 +142,7 @@ export const loginUser = async (req, res) => {
 
     const data = {
       id: user._id,
+      referralCode: user.referralCode,
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
