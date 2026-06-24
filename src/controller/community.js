@@ -37,8 +37,6 @@ export const createPost = async (req, res) => {
             postImage: imageUrl,
         };
 
-        console.log(data, 'data')
-
         const post = await createPostService(data);
         res.status(201).json({
             success: true,
@@ -73,8 +71,6 @@ export const likePost = async (req, res) => {
         const { postId, userId } = req.params;
 
         const result = await likePostService(postId, userId);
-
-        console.log(result, 'result')
 
         return res.status(200).json({
             success: true,
@@ -123,3 +119,5 @@ export const getLikedPost = async (req, res) => {
         });
     }
 };
+
+

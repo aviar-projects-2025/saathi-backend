@@ -5,9 +5,6 @@ import Like from "../model/likes.js";
 export const likePostService = async (postId, userId) => {
     const existingLike = await Like.findOne({ postId, userId });
 
-    console.log(existingLike, 'existingLike')
-    console.log(await Like.countDocuments({ postId }), 'count like')
-
     if (existingLike) {
         const community = await Community.findById(postId);
         return {
