@@ -53,5 +53,5 @@ export const unlikePostService = async (postId, userId) => {
 export const getLikedPostService = async (userId) => {
     const likedPosts = await Like.find({ userId }).select("postId");
 
-    return likedPosts.map((like) => like.postId.toString());
+    return likedPosts.map((like) => like?.postId?.toString());
 };

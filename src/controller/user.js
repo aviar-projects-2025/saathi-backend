@@ -3,11 +3,13 @@ import {
   getAllUsers,
   loggedinUser,
   getUserById,
+  updateProfileService,
 } from '../service/user.js'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import User from '../model/user.js'
-
+import cloudinary from '../../config/cloudinary.js';
+import streamifier from 'streamifier'
 
 // Token Generation
 export const generateToken = (user) => {
@@ -148,6 +150,7 @@ export const loginUser = async (req, res) => {
       email: user.email,
       role: user.role,
       refApprove: user.refApprove,
+      profileImage : user.profileImage,
     }
 
     return res.status(200).json({
@@ -164,3 +167,55 @@ export const loginUser = async (req, res) => {
     })
   }
 }
+
+const uploadToCloudinary = (buffer) => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "profile-pic",
+        resource_type: "image",
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
+};
+
+
+export const updateProfile = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    let imageUrl = "";
+
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer);
+      imageUrl = result.secure_url;
+    }
+
+    const databody = {
+      ...req.body,
+    };
+
+    if (imageUrl) {
+      databody.profileImage = imageUrl;
+    }
+
+    const data = await updateProfileService(userId, databody);
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated",
+      data,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
