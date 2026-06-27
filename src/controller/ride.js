@@ -4,24 +4,25 @@ import {
     updateRideService,
 } from '../service/ride.js'
 
-// Create Ride
+// controller
 export const createRide = async (req, res) => {
-    try {
-        const data = req.body;
-        const ride = await createRideService(data);
-        res.status(201).json({
-            success: true,
-            data: ride,
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message,
-        });
-    }
-}
+  try {
+    const ride = await createRideService(req.body);
 
-//Get All Rides 
+    res.status(201).json({
+      success: true,
+      data: ride,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+
+
 export const getRides = async (req, res) => {
     try {
         const rides = await getAllRideService();
