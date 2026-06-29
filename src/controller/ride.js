@@ -20,8 +20,23 @@ export const createRide = async (req, res) => {
     });
   }
 };
+export const checkActiveRide = async (req, res) => {
+  try {
+    const { userId } = req.params;
 
+    const hasActiveRide = await checkActiveRideService(userId);
 
+    res.status(200).json({
+      success: true,
+      hasActiveRide,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
 
 export const getRides = async (req, res) => {
     try {
