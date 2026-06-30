@@ -15,6 +15,10 @@ export const getRideById = async (id) => {
     return await Ride.findById(id);
 }
 
+export const deleteRideService = async (id) => {
+    return await Ride.findByIdAndDelete(id);
+}
+
 // edit service
 export const updateRideService = async (id, data) => {
     return await Ride.findByIdAndUpdate(id, data, { new: true });

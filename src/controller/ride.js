@@ -1,5 +1,6 @@
 import {
     createRideService,
+    deleteRideService,
     getAllRideService,
     updateRideService,
 } from '../service/ride.js'
@@ -64,6 +65,23 @@ export const editRide = async (req, res) => {
 }
 
 // Delete
+export const deleteRide = async (req, res) => {
+    try {
+        const { id } = req.params
+
+        const deletedRide = await deleteRideService(id);
+        res.status(200).json({
+            status: true,
+            message: 'Ride Deleted'
+        })
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        })
+    }
+}
 
 //Get All Rides 
 export const getUserRides = async (req, res) => {
