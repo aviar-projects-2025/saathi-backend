@@ -4,6 +4,7 @@ import {
   getBookRideService,
   statusBookRide,
 } from "../service/bookride.js";
+import { getIO } from "../../socket.js";
 
 import Ride from "../model/ride.js";
 import Bookride from "../model/bookride.js"
@@ -18,7 +19,6 @@ const requestRide = async (req, res) => {
 
     const ride = await Ride.findById(rideId);
 
-    console.log(ride, 'ride')
     if (!ride) {
       return res.status(404).json({
         success: false,
@@ -41,7 +41,11 @@ const requestRide = async (req, res) => {
 
     const bookingData = await Bookride.create(reqData);
 
-    console.log(bookingData, 'bookingData')
+    const io = getIO();
+    io.to(bookingData.rideOwner.toString()).emit(
+      "new_request",
+      bookingData
+    );
 
     res.status(201).json({
       success: true,
