@@ -3,9 +3,16 @@ import BookRide from "../model/bookride.js";
 const createBookRideService = async (data) => {
     return await BookRide.create(data)
 }
+//  const checkActiveRideService = async (userId) => {
+//   const ride = await Ride.findOne({
+//     createdBy: userId,
+//     status: { $in: ["OPEN", "IN_PROGRESS"] },
+//   });
 
-const editBookRideService = async (id, data) => {
-    return await BookRide.findByIdAndUpdate(
+//   return !!ride;
+// };
+const editBookRideService = async (id,data) =>{
+    return await bookRide.findByIdAndUpdate(
         id,
         data,
         { new: true }
@@ -43,5 +50,6 @@ export {
     editBookRideService,
     getBookRideService,
     getBookRideById,
-    deleteBookRideService
+    deleteBookRideService,
+    // checkActiveRideService
 };
