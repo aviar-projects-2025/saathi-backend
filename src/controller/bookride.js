@@ -2,7 +2,9 @@ import {
   editBookRideService,
   deleteBookRideService,
   getBookRideService,
+  statusBookRide,
 } from "../service/bookride.js";
+import { getIO } from "../../socket.js";
 
 import Ride from "../model/ride.js";
 import Bookride from "../model/bookride.js"
@@ -17,7 +19,6 @@ const requestRide = async (req, res) => {
 
     const ride = await Ride.findById(rideId);
 
-    console.log(ride, 'ride')
     if (!ride) {
       return res.status(404).json({
         success: false,
@@ -40,7 +41,11 @@ const requestRide = async (req, res) => {
 
     const bookingData = await Bookride.create(reqData);
 
-    console.log(bookingData, 'bookingData')
+    const io = getIO();
+    io.to(bookingData.rideOwner.toString()).emit(
+      "new_request",
+      bookingData
+    );
 
     res.status(201).json({
       success: true,
@@ -66,7 +71,7 @@ const getBookride = async (req, res) => {
 
     const rides = await getBookRideService(userId, type);
 
-    console.log(rides,'rides')
+    console.log(rides, 'rides')
 
     res.status(200).json({
       success: true,
@@ -80,6 +85,28 @@ const getBookride = async (req, res) => {
     });
   }
 };
+
+const statusBookride = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { type } = req.query;
+
+    const rides = await statusBookRide(requestId, type);
+
+    console.log(rides,'rides')
+
+    res.status(200).json({
+      success: true,
+      message: "Ride Approved",
+      rides
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message : 'failed to approve'
+    })
+  }
+}
 
 const editBookride = async (req, res) => {
   try {
@@ -120,4 +147,5 @@ export {
   getBookride,
   editBookride,
   deleteBookride,
+  statusBookride,
 };
