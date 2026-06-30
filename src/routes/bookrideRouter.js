@@ -8,9 +8,9 @@ import {
 
 const router = express.Router();
 
-router.get("/", getBookride);
-router.post("/create/:rideId", requestRide);
-router.put("/edit", editBookride);      // use PUT for update
+router.get("/:userId", getBookride);
+router.post("/:rideId", requestRide);
+router.put("/edit", editBookride);
 router.delete("/delete", deleteBookride);
 
 export default router;

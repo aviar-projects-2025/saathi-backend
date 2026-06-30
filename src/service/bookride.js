@@ -1,27 +1,41 @@
-import bookRide from "../model/bookride.js"
+import BookRide from "../model/bookride.js";
 
-const createBookRideService = async (data) =>{
-    return await bookRide.create(data)
+const createBookRideService = async (data) => {
+    return await BookRide.create(data)
 }
 
-const editBookRideService = async (id,data) =>{
-    return await bookRide.findByIdAndUpdate(
+const editBookRideService = async (id, data) => {
+    return await BookRide.findByIdAndUpdate(
         id,
         data,
-        {new: true}
+        { new: true }
     );
 }
 // get all 
-const getBookRideService = async () => {
-    return await bookRide.find();
-}
+const getBookRideService = async (userId, type) => {
+
+  if (type === "requested") {
+    return await BookRide.find({
+      requestedBy: userId,
+    });
+  }
+
+  if (type === "received") {
+    return await BookRide.find({
+      rideOwner: userId,
+    }).populate('requestedBy', 'firstName lastName profileImage');
+  }
+
+  return [];
+};
+
 
 // Get single Ride
 const getBookRideById = async (id) => {
-    return await bookRide.findById(id);
+    return await BookRide.findById(id);
 }
-const deleteBookRideService = async (id) =>{
-    return await bookRide.findByIDAndDelete(id);
+const deleteBookRideService = async (id) => {
+    return await BookRide.findByIDAndDelete(id);
 }
 
 export {

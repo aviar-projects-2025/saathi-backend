@@ -17,17 +17,33 @@ const memberSchema = new mongoose.Schema(
   { _id: false }
 );
 
-const requestSchema = new mongoose.Schema(
+const bookRideSchema = new mongoose.Schema(
   {
-     createdBy: {
+    rideId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Ride",
+      required: true,
+      index: true,
+    },
+
+    requestedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true,
+    },
+
+    rideOwner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
     },
 
     seatsRequested: {
       type: Number,
       default: 1,
+      min: 1,
     },
 
     membersCount: {
@@ -38,16 +54,18 @@ const requestSchema = new mongoose.Schema(
 
     members: {
       type: [memberSchema],
-      required: true,
+      default: [],
     },
 
     phone: {
       type: String,
       required: true,
+      trim: true,
     },
 
     message: {
       type: String,
+      trim: true,
     },
 
     requestType: {
@@ -58,136 +76,26 @@ const requestSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["PENDING", "ACCEPTED", "REJECTED"],
+      enum: [
+        "PENDING",
+        "ACCEPTED",
+        "REJECTED",
+        "CANCELLED",
+        "AUTO_REJECTED",
+      ],
       default: "PENDING",
+      index: true,
     },
   },
   { timestamps: true }
 );
 
-const bookRideSchema = new mongoose.Schema(
-  {
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
-
-    from: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    destination: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    startTime: {
-      type: Date,
-      required: true,
-    },
-
-    modeOfTravel: {
-      type: String,
-      enum: ["Car", "Bus", "Bike", "Flight", "Ship", "Train"],
-      required: true,
-    },
-
-    availableSeats: {
-      type: Number,
-      required: function () {
-        return this.modeOfTravel !== "Flight";
-      },
-      default: 1,
-      min: 0,
-    },
-
-    fuelSharing: {
-      type: Boolean,
-      default: false,
-    },
-
-    fromCountry: String,
-    fromAirport: String,
-    toCountry: String,
-    toAirport: String,
-    flightNumber: String,
-    airlineName: String,
-
-    transitAirport: {
-      type: String,
-      default: "",
-    },
-
-    travellerType: {
-      type: String,
-      enum: [
-        "First-time traveller",
-        "Senior citizen support",
-        "Student travel companion",
-        "Women-only companion",
-        "Family companion",
-        "",
-      ],
-      default: "",
-    },
-
-    language: String,
-
-    ageGroupPreference: {
-      type: String,
-      enum: ["18-25", "26-40", "41-60", "60+", "Any"],
-      default: "Any",
-    },
-
-    medicalAssistance: {
-      type: Boolean,
-      default: false,
-    },
-
-    languageSupport: {
-      type: Boolean,
-      default: false,
-    },
-
-    transitHelp: {
-      type: Boolean,
-      default: false,
-    },
-
-    baggageHelp: {
-      type: Boolean,
-      default: false,
-    },
-
-    description: {
-      type: String,
-      trim: true,
-    },
-
-    status: {
-      type: String,
-      enum: ["OPEN", "FULL", "CLOSED"],
-      default: "OPEN",
-    },
-
-    genderPreference: {
-      type: String,
-      enum: ["Male", "Female", "Any"],
-      default: "Any",
-    },
-
-    requests: {
-      type: [requestSchema],
-      default: [],
-    },
-  },
-  {
-    timestamps: true,
-  }
+// One user can request one ride only once
+bookRideSchema.index(
+  { rideId: 1, requestedBy: 1 },
+  { unique: true }
 );
 
-export default mongoose.model("BookRide", bookRideSchema);
+const BookRide = mongoose.model("BookRide", bookRideSchema);
+
+export default BookRide;

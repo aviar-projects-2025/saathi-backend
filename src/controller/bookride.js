@@ -4,7 +4,8 @@ import {
   getBookRideService,
 } from "../service/bookride.js";
 
-import BookRide from "../model/bookride.js";
+import Ride from "../model/ride.js";
+import Bookride from "../model/bookride.js"
 
 const requestRide = async (req, res) => {
   try {
@@ -14,17 +15,16 @@ const requestRide = async (req, res) => {
     console.log("rideId:", rideId);
     console.log("request data:", data);
 
-    const ride = await BookRide.findById(rideId);
+    const ride = await Ride.findById(rideId);
 
+    console.log(ride, 'ride')
     if (!ride) {
       return res.status(404).json({
         success: false,
         message: "Ride not found",
       });
     }
-
     const isFlight = ride.modeOfTravel === "Flight";
-
     if (!isFlight && Number(data.seatsRequested) > Number(ride.availableSeats)) {
       return res.status(400).json({
         success: false,
@@ -32,29 +32,26 @@ const requestRide = async (req, res) => {
       });
     }
 
-    ride.requests.push({
-      requestedBy: data.requestedBy,
-      seatsRequested: isFlight ? null : Number(data.seatsRequested),
-      membersCount: Number(data.membersCount),
-      members: data.members,
-      phone: data.phone,
-      message: data.message,
-      requestType: isFlight ? "COMPANION" : "SEAT",
-      status: "PENDING",
-    });
+    const reqData = {
+      ...data,
+      rideId,
+      rideOwner: ride.createdBy,
+    }
 
-    await ride.save();
+    const bookingData = await Bookride.create(reqData);
+
+    console.log(bookingData, 'bookingData')
 
     res.status(201).json({
       success: true,
       message: isFlight
         ? "Companion request sent successfully"
         : "Seat request sent successfully",
-      data: ride,
+      data: bookingData,
     });
+
   } catch (error) {
     console.log("requestRide error:", error);
-
     res.status(500).json({
       success: false,
       message: error.message,
@@ -64,7 +61,12 @@ const requestRide = async (req, res) => {
 
 const getBookride = async (req, res) => {
   try {
-    const rides = await getBookRideService();
+    const { userId } = req.params;
+    const { type } = req.query; // NEW
+
+    const rides = await getBookRideService(userId, type);
+
+    console.log(rides,'rides')
 
     res.status(200).json({
       success: true,
