@@ -4,7 +4,7 @@ import {
   getBookride,
   editBookride,
   deleteBookride,
- 
+  statusBookride
 } from "../controller/bookride.js";
 
 const router = express.Router();
