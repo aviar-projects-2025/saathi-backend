@@ -4,6 +4,7 @@ import {
   getBookride,
   editBookride,
   deleteBookride,
+  statusBookride
 } from "../controller/bookride.js";
 
 const router = express.Router();
@@ -11,6 +12,7 @@ const router = express.Router();
 router.get("/:userId", getBookride);
 router.post("/:rideId", requestRide);
 router.put("/edit", editBookride);
+router.patch("/:requestId/status", statusBookride);
 router.delete("/delete", deleteBookride);
 
 export default router;

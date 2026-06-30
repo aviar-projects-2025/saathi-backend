@@ -2,6 +2,7 @@ import {
   editBookRideService,
   deleteBookRideService,
   getBookRideService,
+  statusBookRide,
 } from "../service/bookride.js";
 
 import Ride from "../model/ride.js";
@@ -66,7 +67,7 @@ const getBookride = async (req, res) => {
 
     const rides = await getBookRideService(userId, type);
 
-    console.log(rides,'rides')
+    console.log(rides, 'rides')
 
     res.status(200).json({
       success: true,
@@ -80,6 +81,28 @@ const getBookride = async (req, res) => {
     });
   }
 };
+
+const statusBookride = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { type } = req.query;
+
+    const rides = await statusBookRide(requestId, type);
+
+    console.log(rides,'rides')
+
+    res.status(200).json({
+      success: true,
+      message: "Ride Approved",
+      rides
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message : 'failed to approve'
+    })
+  }
+}
 
 const editBookride = async (req, res) => {
   try {
@@ -120,4 +143,5 @@ export {
   getBookride,
   editBookride,
   deleteBookride,
+  statusBookride,
 };
