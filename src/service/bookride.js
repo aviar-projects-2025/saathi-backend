@@ -4,11 +4,18 @@ import Ride from "../model/ride.js";
 const createBookRideService = async (data) => {
   return await BookRide.create(data)
 }
-//  const checkActiveRideService = async (userId) => {
-//   const ride = await Ride.findOne({
-//     createdBy: userId,
-//     status: { $in: ["OPEN", "IN_PROGRESS"] },
-//   });
+ const getSentRequestsService = async (userId) => {
+  return await BookRide.find({ requestedBy: userId })
+    .populate({
+      path: "rideId",
+      populate: {
+        path: "createdBy",
+        select: "firstName lastName email profileImage",
+      },
+    })
+    .populate("requestedBy", "firstName lastName email profileImage")
+    .sort({ createdAt: -1 });
+};
 
 const editBookRideService = async (id, data) => {
   return await BookRide.findByIdAndUpdate(
@@ -99,6 +106,7 @@ export {
   editBookRideService,
   getBookRideService,
   getBookRideById,
+  getSentRequestsService,
   deleteBookRideService,
   statusBookRide
 };
