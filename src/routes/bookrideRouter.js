@@ -4,12 +4,14 @@ import {
   getBookride,
   editBookride,
   deleteBookride,
-  statusBookride
+  statusBookride,
+getBookrideSend
 } from "../controller/bookride.js";
 
 const router = express.Router();
 
 router.get("/:userId", getBookride);
+router.get("/send/:userId",getBookrideSend);
 router.post("/:rideId", requestRide);
 router.put("/edit", editBookride);
 router.patch("/:requestId/status", statusBookride);

@@ -2,6 +2,7 @@ import {
   editBookRideService,
   deleteBookRideService,
   getBookRideService,
+  getSentRequestsService,
   statusBookRide,
 } from "../service/bookride.js";
 import { getIO } from "../../socket.js";
@@ -86,6 +87,24 @@ const getBookride = async (req, res) => {
   }
 };
 
+const getBookrideSend = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const requests = await getSentRequestsService(userId);
+
+    res.status(200).json({
+      success: true,
+      data: requests,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 const statusBookride = async (req, res) => {
   try {
     const { requestId } = req.params;
@@ -147,5 +166,6 @@ export {
   getBookride,
   editBookride,
   deleteBookride,
+  getBookrideSend,
   statusBookride,
 };
