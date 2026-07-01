@@ -5,7 +5,7 @@ export const initSocket = (server) => {
         cors: {
             origin: [
                 "http://localhost:5173",
-                "https://saathi-frontend-mu.vercel.app/"
+                "https://saathi-frontend-mu.vercel.app"
             ],
             methods: ["GET", "POST"],
         },
