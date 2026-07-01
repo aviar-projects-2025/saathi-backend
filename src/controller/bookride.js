@@ -42,11 +42,15 @@ const requestRide = async (req, res) => {
 
     const bookingData = await Bookride.create(reqData);
 
+    console.log(bookingData,'bookingData')
+
     const io = getIO();
     io.to(bookingData.rideOwner.toString()).emit(
       "new_request",
       bookingData
     );
+
+    
 
     res.status(201).json({
       success: true,
@@ -71,8 +75,6 @@ const getBookride = async (req, res) => {
     const { type } = req.query; // NEW
 
     const rides = await getBookRideService(userId, type);
-
-    console.log(rides, 'rides')
 
     res.status(200).json({
       success: true,
