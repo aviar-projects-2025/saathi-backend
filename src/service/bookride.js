@@ -97,8 +97,8 @@ const statusBookRide = async (requestId, type) => {
 const getBookRideById = async (id) => {
   return await BookRide.findById(id);
 }
-const deleteBookRideService = async (id) => {
-  return await BookRide.findByIDAndDelete(id);
+const deleteBookRideService = async (userId) => {
+  return await BookRide.findByIdAndDelete(userId);
 }
 
 export {
