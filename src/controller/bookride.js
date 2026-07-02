@@ -5,7 +5,7 @@ import {
   getSentRequestsService,
   statusBookRide,
 } from "../service/bookride.js";
-import { getIO } from "../../socket.js";
+import { emitNotification, getIO } from "../../socket.js";
 
 import Ride from "../model/ride.js";
 import Bookride from "../model/bookride.js"
@@ -14,10 +14,6 @@ const requestRide = async (req, res) => {
   try {
     const { rideId } = req.params;
     const data = req.body;
-
-    console.log("rideId:", rideId);
-    console.log("request data:", data);
-
     const ride = await Ride.findById(rideId);
 
     if (!ride) {
@@ -42,15 +38,14 @@ const requestRide = async (req, res) => {
 
     const bookingData = await Bookride.create(reqData);
 
-    console.log(bookingData,'bookingData')
-
-    const io = getIO();
-    io.to(bookingData.rideOwner.toString()).emit(
-      "new_request",
-      bookingData
-    );
-
+    // emitNotification(bookingData.rideOwner.toString(), "new_request", bookingData);
     
+    emitNotification(
+      bookingData.rideOwner.toString(), {
+      type: "new_request",
+      message: "New ride request received",
+      data: bookingData
+    });
 
     res.status(201).json({
       success: true,
@@ -112,9 +107,16 @@ const statusBookride = async (req, res) => {
     const { requestId } = req.params;
     const { type } = req.query;
 
+    console.log("status book ride")
     const rides = await statusBookRide(requestId, type);
-
-    console.log(rides,'rides')
+    console.log(rides, 'rides soc')
+    // emitToUser(rides.requestedBy.toString(), "request_update", rides);
+    emitNotification(
+      rides.requestedBy.toString(), {
+      type: "request_update",
+      message: "Check ride request status",
+      data: rides
+    });
 
     res.status(200).json({
       success: true,
@@ -124,7 +126,7 @@ const statusBookride = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message : 'failed to approve'
+      message: 'failed to approve'
     })
   }
 }
