@@ -150,12 +150,20 @@ const editBookride = async (req, res) => {
 
 const deleteBookride = async (req, res) => {
   try {
-    const rides = await deleteBookRideService();
+    const {userId } = req.params;
+
+    const ride = await deleteBookRideService(userId);
+    if (!ride) {
+      return res.status(404).json({
+        success: false,
+        message: "Ride request not found",
+      });
+    }
 
     res.status(200).json({
       success: true,
-      totalRides: rides.length,
-      data: rides,
+      message: "Ride request deleted successfully",
+      data: ride,
     });
   } catch (error) {
     res.status(500).json({
