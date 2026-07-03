@@ -124,6 +124,7 @@ export const getSingleUser = async (req, res) => {
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
+
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -133,12 +134,19 @@ export const loginUser = async (req, res) => {
       });
     }
 
-    const isMatch = await bcrypt.compare(password, user?.password)
+    const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
       return res.status(400).json({
         success: false,
         message: "Invalid email or password",
+      });
+    }
+
+    if (user.refApprove === "Waiting") {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is not approved yet. Please wait for approval.",
       });
     }
 
@@ -150,23 +158,23 @@ export const loginUser = async (req, res) => {
       email: user.email,
       role: user.role,
       refApprove: user.refApprove,
-      profileImage : user.profileImage,
-    }
+      profileImage: user.profileImage,
+    };
 
     return res.status(200).json({
       success: true,
       message: "Login successful",
       token: generateToken(user),
-      user: data
+      user: data,
     });
 
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message,
-    })
+    });
   }
-}
+};
 
 const uploadToCloudinary = (buffer) => {
   return new Promise((resolve, reject) => {
