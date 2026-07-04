@@ -15,6 +15,7 @@ export const createNotification = async (req, res) => {
 export const getNotificationById = async (req, res) => {
     try {
         const { userId } = req.params
+        console.log(userId,'useriD')
         const getNotification = await getNotificationService(userId);
         res.status(200).json({
             success : true,

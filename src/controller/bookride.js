@@ -9,21 +9,42 @@ import { emitNotification, getIO } from "../../socket.js";
 
 import Ride from "../model/ride.js";
 import Bookride from "../model/bookride.js"
-import { createNotificaitonService } from "../service/notification.js";
+import { buildNotification, createNotificationService } from "../service/notification.js";
 
 const requestRide = async (req, res) => {
   try {
     const { rideId } = req.params;
     const data = req.body;
-    const ride = await Ride.findById(rideId);
 
+    const ride = await Ride.findById(rideId);
     if (!ride) {
-      return res.status(404).json({
+      return res.status(404).json({ success: false, message: "Ride not found" });
+    }
+
+    // ❌ prevent self request
+    if (ride.createdBy.toString() === data.requestedBy.toString()) {
+      return res.status(400).json({
         success: false,
-        message: "Ride not found",
+        message: "You cannot request your own ride",
       });
     }
+
+    // ❌ prevent duplicate request
+    const existingRequest = await Bookride.findOne({
+      rideId,
+      requestedBy: data.requestedBy,
+      status: "PENDING",
+    });
+
+    if (existingRequest) {
+      return res.status(400).json({
+        success: false,
+        message: "You already requested this ride",
+      });
+    }
+
     const isFlight = ride.modeOfTravel === "Flight";
+
     if (!isFlight && Number(data.seatsRequested) > Number(ride.availableSeats)) {
       return res.status(400).json({
         success: false,
@@ -31,21 +52,38 @@ const requestRide = async (req, res) => {
       });
     }
 
-    const reqData = {
+    const bookingData = await Bookride.create({
       ...data,
       rideId,
       rideOwner: ride.createdBy,
-    }
+      requestedBy: data.requestedBy,
+    });
 
-    const bookingData = await Bookride.create(reqData);
+    const actorName = data.members.name;
 
-    await createNotificaitonService(bookingData, 'new_request', 'New Ride Request', `New ride request from Dinesh `)
-
-    emitNotification(
-      bookingData.rideOwner.toString(), {
+    const notif = buildNotification({
       type: "new_request",
-      message: "New ride request received",
-      data: bookingData
+      actorName,
+    });
+
+    await createNotificationService({
+      userId: ride.createdBy,
+      actorId: data.requestedBy,
+      type: "new_request",
+      ...notif,
+      data: {
+        rideId,
+        requestId: bookingData._id,
+      },
+    });
+
+    emitNotification(ride.createdBy.toString(), {
+      type: "new_request",
+      message: notif.message,
+      data: {
+        rideId,
+        requestId: bookingData._id,
+      },
     });
 
     res.status(201).json({
@@ -106,31 +144,75 @@ const getBookrideSend = async (req, res) => {
 const statusBookride = async (req, res) => {
   try {
     const { requestId } = req.params;
-    const { type } = req.query;
+    const { type: statusType } = req.query;
 
-    const rides = await statusBookRide(requestId, type);
+    console.log(statusType,'statusType')
 
-    await createNotificaitonService(rides, 'request_accepted', 'Accepted', 'Ride Accepted');
+    if (!["Approve", "Reject"].includes(statusType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status type",
+      });
+    }
 
-    emitNotification(
-      rides.requestedBy.toString(), {
-      type: "request_update",
-      message: "Check ride request status",
-      data: rides
+    // ✅ decide notification type FIRST
+    const notifType =
+      statusType === "Approve"
+        ? "request_accepted"
+        : "request_rejected";
+
+    // ✅ update booking
+    const rides = await statusBookRide(requestId, statusType);
+
+    if (!rides) {
+      return res.status(404).json({
+        success: false,
+        message: "Request not found",
+      });
+    }
+
+    // ✅ build notification
+    const notif = buildNotification({ type: notifType });
+
+    // ✅ save notification
+    await createNotificationService({
+      userId: rides.requestedBy,     // 👈 requester
+      actorId: rides.rideOwner,      // 👈 ride owner
+      type: notifType,
+      ...notif,
+      data: {
+        rideId: rides.rideId,
+        requestId: rides._id,
+      },
+    });
+
+    // ✅ realtime notification
+    emitNotification(rides.requestedBy.toString(), {
+      type: notifType,
+      message: notif.message,
+      data: {
+        rideId: rides.rideId,
+        requestId: rides._id,
+      },
     });
 
     res.status(200).json({
       success: true,
-      message: "Ride Approved",
-      rides
-    })
+      message:
+        statusType === "Approve"
+          ? "Ride request accepted"
+          : "Ride request rejected",
+      data: rides,
+    });
+
   } catch (error) {
+    console.error("statusBookride error:", error);
     res.status(500).json({
       success: false,
-      message: 'failed to approve'
-    })
+      message: "Failed to update ride request",
+    });
   }
-}
+};
 
 const editBookride = async (req, res) => {
   try {
