@@ -21,7 +21,6 @@ const requestRide = async (req, res) => {
       return res.status(404).json({ success: false, message: "Ride not found" });
     }
 
-    // ❌ prevent self request
     if (ride.createdBy.toString() === data.requestedBy.toString()) {
       return res.status(400).json({
         success: false,
@@ -29,7 +28,6 @@ const requestRide = async (req, res) => {
       });
     }
 
-    // ❌ prevent duplicate request
     const existingRequest = await Bookride.findOne({
       rideId,
       requestedBy: data.requestedBy,
