@@ -9,6 +9,7 @@ import { emitNotification, getIO } from "../../socket.js";
 
 import Ride from "../model/ride.js";
 import Bookride from "../model/bookride.js"
+import { createNotificaitonService } from "../service/notification.js";
 
 const requestRide = async (req, res) => {
   try {
@@ -38,8 +39,8 @@ const requestRide = async (req, res) => {
 
     const bookingData = await Bookride.create(reqData);
 
-    // emitNotification(bookingData.rideOwner.toString(), "new_request", bookingData);
-    
+    await createNotificaitonService(bookingData, 'new_request', 'New Ride Request', `New ride request from Dinesh `)
+
     emitNotification(
       bookingData.rideOwner.toString(), {
       type: "new_request",
@@ -107,10 +108,10 @@ const statusBookride = async (req, res) => {
     const { requestId } = req.params;
     const { type } = req.query;
 
-    console.log("status book ride")
     const rides = await statusBookRide(requestId, type);
-    console.log(rides, 'rides soc')
-    // emitToUser(rides.requestedBy.toString(), "request_update", rides);
+
+    await createNotificaitonService(rides, 'request_accepted', 'Accepted', 'Ride Accepted');
+
     emitNotification(
       rides.requestedBy.toString(), {
       type: "request_update",
@@ -150,7 +151,7 @@ const editBookride = async (req, res) => {
 
 const deleteBookride = async (req, res) => {
   try {
-    const {userId } = req.params;
+    const { userId } = req.params;
 
     const ride = await deleteBookRideService(userId);
     if (!ride) {

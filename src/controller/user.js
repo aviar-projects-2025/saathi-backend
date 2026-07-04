@@ -150,6 +150,13 @@ export const loginUser = async (req, res) => {
       });
     }
 
+    if (user.refApprove === "Blocked") {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is Blocked. Contact Admin admin@saathi.com",
+      });
+    }
+
     const data = {
       id: user._id,
       referralCode: user.referralCode,

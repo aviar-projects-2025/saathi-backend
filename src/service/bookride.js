@@ -51,8 +51,6 @@ const statusBookRide = async (requestId, type) => {
       { new: true }
     );
 
-    console.log(request,'request')
-
     if (!request) throw new Error("Request not found");
 
     // 2. Only proceed if approved
