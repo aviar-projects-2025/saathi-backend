@@ -59,7 +59,7 @@ const requestRide = async (req, res) => {
       requestedBy: data.requestedBy,
     });
 
-    const actorName = data.members.name;
+    const actorName = data.firstName;
 
     const notif = buildNotification({
       type: "new_request",
