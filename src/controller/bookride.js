@@ -64,6 +64,8 @@ const requestRide = async (req, res) => {
       actorName,
     });
 
+
+
     await createNotificationService({
       userId: ride.createdBy,
       actorId: data.requestedBy,
@@ -72,6 +74,8 @@ const requestRide = async (req, res) => {
       data: {
         rideId,
         requestId: bookingData._id,
+        from: ride.from,
+        destination: ride.destination,
       },
     });
 
@@ -144,7 +148,7 @@ const statusBookride = async (req, res) => {
     const { requestId } = req.params;
     const { type: statusType } = req.query;
 
-    console.log(statusType,'statusType')
+    console.log(statusType, 'statusType')
 
     if (!["Approve", "Reject"].includes(statusType)) {
       return res.status(400).json({
@@ -153,13 +157,11 @@ const statusBookride = async (req, res) => {
       });
     }
 
-    // ✅ decide notification type FIRST
     const notifType =
       statusType === "Approve"
         ? "request_accepted"
         : "request_rejected";
 
-    // ✅ update booking
     const rides = await statusBookRide(requestId, statusType);
 
     if (!rides) {
@@ -169,10 +171,8 @@ const statusBookride = async (req, res) => {
       });
     }
 
-    // ✅ build notification
     const notif = buildNotification({ type: notifType });
 
-    // ✅ save notification
     await createNotificationService({
       userId: rides.requestedBy,     // 👈 requester
       actorId: rides.rideOwner,      // 👈 ride owner
@@ -184,7 +184,6 @@ const statusBookride = async (req, res) => {
       },
     });
 
-    // ✅ realtime notification
     emitNotification(rides.requestedBy.toString(), {
       type: notifType,
       message: notif.message,
