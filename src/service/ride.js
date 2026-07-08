@@ -11,20 +11,20 @@ export const createRideService = async (data) => {
   const endOfDay = new Date(startDate);
   endOfDay.setHours(23, 59, 59, 999);
 
-  const activeRide = await Ride.findOne({
-    createdBy: data.createdBy,
-    status: { $in: ["OPEN", "IN_PROGRESS"] },
-    startTime: {
-      $gte: startOfDay,
-      $lte: endOfDay,
-    },
-  });
+  // const activeRide = await Ride.findOne({
+  //   createdBy: data.createdBy,
+  //   status: { $in: ["OPEN", "IN_PROGRESS"] },
+  //   startTime: {
+  //     $gte: startOfDay,
+  //     $lte: endOfDay,
+  //   },
+  // });
 
-  if (activeRide) {
-    throw new Error(
-      "You already have an active ride scheduled on this date. Please close or complete it before creating another ride."
-    );
-  }
+  // if (activeRide) {
+  //   throw new Error(
+  //     "You already have an active ride scheduled on this date. Please close or complete it before creating another ride."
+  //   );
+  // }
 
   return await Ride.create(data);
 };

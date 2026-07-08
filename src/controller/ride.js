@@ -54,16 +54,11 @@ export const getRides = async (req, res) => {
         })
     }
 }
-
 // Update
 export const editRide = async (req, res) => {
     try {
         const { id } = req.params
         const data = req.body
-
-
-        console.log(id, 'id')
-
 
         const updatedRide = await updateRideService(id, data);
         console.log(updatedRide, 'updateRide')

@@ -28,6 +28,9 @@ const rideSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    endTime: {
+      type: Date,
+    },
 
     // Normal ride fields
     availableSeats: {
@@ -147,6 +150,12 @@ const rideSchema = new mongoose.Schema(
       type: String,
       enum: ["OPEN", "FULL", "CLOSED"],
       default: "OPEN",
+    },
+
+    travelStatus: {
+      type: String,
+      enum: ['Waiting','Started', 'Ongoing', 'Completed', 'Cancelled'],
+      default: "Waiting",
     },
 
     genderPreference: {
