@@ -15,8 +15,9 @@ const requestRide = async (req, res) => {
   try {
     const { rideId } = req.params;
     const data = req.body;
-
+    
     const ride = await Ride.findById(rideId);
+    console.log(ride,'ride ride')
     if (!ride) {
       return res.status(404).json({ success: false, message: "Ride not found" });
     }
@@ -160,6 +161,7 @@ const statusBookride = async (req, res) => {
         ? "request_accepted"
         : "request_rejected";
 
+    // 🔹 Your existing logic (this already reduces seat 👍)
     const rides = await statusBookRide(requestId, statusType);
 
     if (!rides) {
@@ -169,11 +171,57 @@ const statusBookride = async (req, res) => {
       });
     }
 
+    if (statusType === "Approve") {
+      const ride = await Ride.findById(rides.rideId);
+
+      if (ride && ride.availableSeats === 0) {
+        const pendingRequests = await Bookride.find({
+          rideId: ride._id,
+          status: "PENDING",
+        });
+
+        await Bookride.updateMany(
+          {
+            rideId: ride._id,
+            status: "PENDING",
+          },
+          {
+            $set: { status: "REJECTED" },
+          }
+        );
+
+        for (const req of pendingRequests) {
+          const notif = buildNotification({ type: "request_rejected" });
+
+          await createNotificationService({
+            userId: req.requestedBy,
+            actorId: req.rideOwner,
+            type: "request_rejected",
+            ...notif,
+            data: {
+              rideId: req.rideId,
+              requestId: req._id,
+            },
+          });
+
+          emitNotification(req.requestedBy.toString(), {
+            type: "request_rejected",
+            message: notif.message,
+            data: {
+              rideId: req.rideId,
+              requestId: req._id,
+            },
+          });
+        }
+      }
+    }
+
+    // 🔔 Notification for current request
     const notif = buildNotification({ type: notifType });
 
     await createNotificationService({
-      userId: rides.requestedBy,     // 👈 requester
-      actorId: rides.rideOwner,      // 👈 ride owner
+      userId: rides.requestedBy,
+      actorId: rides.rideOwner,
       type: notifType,
       ...notif,
       data: {
