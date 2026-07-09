@@ -49,6 +49,24 @@ export const buildNotification = ({ type, actorName }) => {
                 message: `Ride details have been updated`,
             };
 
+        case "referral_pending":
+            return {
+                title: "New Referral",
+                message: `${actorName} signed up using your referral code`,
+            };
+
+        case "referral_approved":
+            return {
+                title: "Referral Approved 🎉",
+                message: `Your referral has been approved`,
+            };
+
+        case "referral_rejected":
+            return {
+                title: "Referral Rejected",
+                message: `Your referral was rejected`,
+            };
+
         default:
             return {
                 title: "Notification",
@@ -82,3 +100,11 @@ export const getNotificationService = async (userId) => {
         .populate('actorId', 'firstName lastName profileImage')
         .sort({ createdAt: -1 });
 };
+
+export const updateNotificationStatusService = async (id, data) => {
+    return await Notification.findByIdAndUpdate(
+        id,
+        data,
+        { new: true }
+    )
+}

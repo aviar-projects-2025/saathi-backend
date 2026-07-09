@@ -148,8 +148,6 @@ const statusBookride = async (req, res) => {
     const { requestId } = req.params;
     const { type: statusType } = req.query;
 
-    console.log(statusType, 'statusType')
-
     if (!["Approve", "Reject"].includes(statusType)) {
       return res.status(400).json({
         success: false,
