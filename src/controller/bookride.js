@@ -15,13 +15,13 @@ const requestRide = async (req, res) => {
   try {
     const { rideId } = req.params;
     const data = req.body;
-
+    
     const ride = await Ride.findById(rideId);
+    console.log(ride,'ride ride')
     if (!ride) {
       return res.status(404).json({ success: false, message: "Ride not found" });
     }
 
-    // ❌ prevent self request
     if (ride.createdBy.toString() === data.requestedBy.toString()) {
       return res.status(400).json({
         success: false,
@@ -29,7 +29,6 @@ const requestRide = async (req, res) => {
       });
     }
 
-    // ❌ prevent duplicate request
     const existingRequest = await Bookride.findOne({
       rideId,
       requestedBy: data.requestedBy,
@@ -66,6 +65,8 @@ const requestRide = async (req, res) => {
       actorName,
     });
 
+
+
     await createNotificationService({
       userId: ride.createdBy,
       actorId: data.requestedBy,
@@ -74,6 +75,8 @@ const requestRide = async (req, res) => {
       data: {
         rideId,
         requestId: bookingData._id,
+        from: ride.from,
+        destination: ride.destination,
       },
     });
 
@@ -146,8 +149,6 @@ const statusBookride = async (req, res) => {
     const { requestId } = req.params;
     const { type: statusType } = req.query;
 
-    console.log(statusType,'statusType')
-
     if (!["Approve", "Reject"].includes(statusType)) {
       return res.status(400).json({
         success: false,
@@ -155,13 +156,12 @@ const statusBookride = async (req, res) => {
       });
     }
 
-    // ✅ decide notification type FIRST
     const notifType =
       statusType === "Approve"
         ? "request_accepted"
         : "request_rejected";
 
-    // ✅ update booking
+    // 🔹 Your existing logic (this already reduces seat 👍)
     const rides = await statusBookRide(requestId, statusType);
 
     if (!rides) {
@@ -171,13 +171,57 @@ const statusBookride = async (req, res) => {
       });
     }
 
-    // ✅ build notification
+    if (statusType === "Approve") {
+      const ride = await Ride.findById(rides.rideId);
+
+      if (ride && ride.availableSeats === 0) {
+        const pendingRequests = await Bookride.find({
+          rideId: ride._id,
+          status: "PENDING",
+        });
+
+        await Bookride.updateMany(
+          {
+            rideId: ride._id,
+            status: "PENDING",
+          },
+          {
+            $set: { status: "REJECTED" },
+          }
+        );
+
+        for (const req of pendingRequests) {
+          const notif = buildNotification({ type: "request_rejected" });
+
+          await createNotificationService({
+            userId: req.requestedBy,
+            actorId: req.rideOwner,
+            type: "request_rejected",
+            ...notif,
+            data: {
+              rideId: req.rideId,
+              requestId: req._id,
+            },
+          });
+
+          emitNotification(req.requestedBy.toString(), {
+            type: "request_rejected",
+            message: notif.message,
+            data: {
+              rideId: req.rideId,
+              requestId: req._id,
+            },
+          });
+        }
+      }
+    }
+
+    // 🔔 Notification for current request
     const notif = buildNotification({ type: notifType });
 
-    // ✅ save notification
     await createNotificationService({
-      userId: rides.requestedBy,     // 👈 requester
-      actorId: rides.rideOwner,      // 👈 ride owner
+      userId: rides.requestedBy,
+      actorId: rides.rideOwner,
       type: notifType,
       ...notif,
       data: {
@@ -186,7 +230,6 @@ const statusBookride = async (req, res) => {
       },
     });
 
-    // ✅ realtime notification
     emitNotification(rides.requestedBy.toString(), {
       type: notifType,
       message: notif.message,

@@ -10,6 +10,8 @@ import bcrypt from 'bcrypt'
 import User from '../model/user.js'
 import cloudinary from '../../config/cloudinary.js';
 import streamifier from 'streamifier'
+import { buildNotification, createNotificationService } from '../service/notification.js';
+import { emitNotification } from '../../socket.js';
 
 // Token Generation
 export const generateToken = (user) => {
@@ -66,8 +68,36 @@ export const createUser = async (req, res) => {
       password: hashedPassword,
       referralCode: myReferralCode,
       referredBy,
-      refApprove: referralCode ? "Waiting" : "Approved",
+      refApprove: referralCode && "Waiting"
     });
+
+    if (referredBy) {
+      const actorName = firstName;
+
+      const notif = buildNotification({
+        type: "referral_pending",
+        actorName,
+      });
+
+      await createNotificationService({
+        userId: referredBy,
+        actorId: user._id,
+        type: "referral_pending",
+        ...notif,
+        data: {
+          userId: user._id,
+        },
+      });
+
+      emitNotification(referredBy.toString(), {
+        type: "referral_pending",
+        message: notif.message,
+        data: {
+          userId: user._id,
+          user: user,
+        },
+      });
+    }
 
     res.status(201).json({
       success: true,

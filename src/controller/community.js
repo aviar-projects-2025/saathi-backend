@@ -1,8 +1,8 @@
 import cloudinary from "../../config/cloudinary.js";
 import streamifier from 'streamifier'
-import { createPostService, getPostsService } from "../service/community.js";
+import { createPostService, getPostsService, deletePostService, editPostService } from "../service/community.js";
 import { getLikedPostService, likePostService, unlikePostService } from "../service/likes.js";
-
+import Community from "../model/community.js";
 
 const uploadToCloudinary = (buffer) => {
     return new Promise((resolve, reject) => {
@@ -21,6 +21,55 @@ const uploadToCloudinary = (buffer) => {
     });
 };
 
+export const editPost = async (req, res) => {
+    try {
+        const { postId } = req.params;
+        const { userId, description } = req.body;
+
+        let imageUrl = "";
+
+        if (req.file) {
+            const result = await uploadToCloudinary(req.file.buffer);
+            imageUrl = result.secure_url;
+        }
+
+        const post = await editPostService(
+            postId,
+            userId,
+            description,
+            imageUrl
+        );
+
+        return res.status(200).json({
+            success: true,
+            data: post,
+            message: "Post updated successfully",
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+export const deletePost = async (req, res) => {
+    try {
+        const { postId } = req.params;
+        const { userId } = req.body;
+
+        const result = await deletePostService(postId, userId);
+
+        return res.status(200).json({
+            success: true,
+            message: result.message,
+        });
+    } catch (error) {
+        return res.status(error.statusCode || 500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
 
 export const createPost = async (req, res) => {
     try {

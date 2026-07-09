@@ -1,4 +1,4 @@
-import { getNotificationService } from "../service/notification.js";
+import { getNotificationService, updateNotificationStatusService } from "../service/notification.js";
 
 export const createNotification = async (req, res) => {
     try {
@@ -15,16 +15,34 @@ export const createNotification = async (req, res) => {
 export const getNotificationById = async (req, res) => {
     try {
         const { userId } = req.params
-        console.log(userId,'useriD')
         const getNotification = await getNotificationService(userId);
         res.status(200).json({
-            success : true,
-            data : getNotification,
+            success: true,
+            data: getNotification,
         })
     } catch (error) {
         res.status(500).json({
-            success : false,
-            message : 'failed to fetch notification'
+            success: false,
+            message: 'failed to fetch notification'
+        })
+    }
+}
+
+export const updateNotificationStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const data =  {
+            isRead: true
+        }
+        const updateNotification = await updateNotificationStatusService(id, data);
+        res.status(200).json({
+            success: true,
+            data: updateNotification
+        })
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'failed'
         })
     }
 }
