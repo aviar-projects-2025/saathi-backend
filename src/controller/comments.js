@@ -30,7 +30,7 @@ export const postReplyComment = async (req, res) => {
     try {
         const { postId, parentId, userId } = req.params
         const body = req.body
-        console.log(body, 'body 11')
+
         const data = await replyCommentService(postId, parentId, userId, body.reply);
         res.status(201).json({
             status: true,
@@ -63,38 +63,45 @@ export const getComments = async (req, res) => {
 
 export const editComment = async (req, res) => {
     try {
-        const { postId, userId } = req.params
-        const body = req.body
-        const data = await editCommentService(postId, userId, body);
-        res.status(201).json({
+        const { commentId, userId } = req.params;
+
+        const data = await editCommentService(
+            commentId,
+            userId,
+            req.body
+        );
+
+        res.status(200).json({
             status: true,
-            data: data,
-            message: "Comment edited"
-        })
+            data,
+            message: "Comment edited successfully",
+        });
     } catch (error) {
         res.status(500).json({
             status: false,
-            message: "Comment failed to edit"
-        })
+            message: error.message,
+        });
     }
-}
+};
 
 export const deleteComment = async (req, res) => {
     try {
-        const { postId, userId } = req.params
-        const deleteData = await deleteCommentService(postId, userId);
-        res.status(201).json({
+        const { commentId, userId } = req.params;
+
+        const data = await deleteCommentService(commentId, userId);
+
+        res.status(200).json({
             status: true,
-            data: deleteData,
-            message: "Comment deleted"
-        })
+            data,
+            message: "Comment deleted successfully",
+        });
     } catch (error) {
         res.status(500).json({
             status: false,
-            message: "Comment failed to delete"
-        })
+            message: error.message,
+        });
     }
-}
+};
 
 export const likeComment = async (req, res) => {
     try {

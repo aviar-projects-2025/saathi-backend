@@ -24,11 +24,7 @@ export const updateReferrals = async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
-
-        console.log(data, "data");
-
         const approvedUser = await updateService(id, data);
-
         const user = await User.findById(id);
 
         if (!user) {
