@@ -6,15 +6,11 @@ import Notification from "../model/notification.js";
 
 cron.schedule("* * * * *", async () => {
     const now = new Date();
-    console.log("Cron running at:", now);
-
     // Step 1: find rides
     const rides = await Ride.find({
         travelStatus: "Waiting",
         startTime: { $lte: now },
     });
-
-    console.log(rides, 'rides')
 
     if (!rides.length) return;
 
@@ -24,8 +20,6 @@ cron.schedule("* * * * *", async () => {
             type: "ride_started",
             "data.rideId": ride._id,
         });
-
-        console.log(exists, 'exists')
 
         if (!exists) {
             await Notification.create({
