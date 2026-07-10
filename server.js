@@ -28,6 +28,7 @@
 
 
 import dotenv from "dotenv";
+import './src/crons/rideStatus.job.js'
 dotenv.config({ path: ".env", override: true });
 
 import { Server } from "socket.io";
