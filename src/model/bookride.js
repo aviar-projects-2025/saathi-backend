@@ -91,10 +91,10 @@ const bookRideSchema = new mongoose.Schema(
 );
 
 // One user can request one ride only once
-bookRideSchema.index(
-  { rideId: 1, requestedBy: 1 },
-  { unique: true }
-);
+// bookRideSchema.index(
+//   { rideId: 1, requestedBy: 1 },
+//   { unique: true }
+// );
 
 const BookRide = mongoose.model("BookRide", bookRideSchema);
 

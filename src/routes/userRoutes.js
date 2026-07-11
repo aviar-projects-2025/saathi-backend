@@ -1,5 +1,5 @@
 import express from 'express'
-import { createUser, getUsers, loginUser, getSingleUser, updateProfile } from '../controller/user.js'
+import { createUser, getUsers, loginUser, getSingleUser, updateProfile, changePassword} from '../controller/user.js'
 import multer from 'multer';
 
 const router = express.Router();
@@ -8,7 +8,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.post("/", createUser);
 router.get("/", getUsers);
 router.get("/:id", getSingleUser);
-
+router.patch("/change-password/:userId", changePassword);
 
 //login route
 router.post("/login", loginUser);

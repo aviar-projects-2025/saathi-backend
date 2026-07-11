@@ -28,8 +28,4 @@ app.use("/api/v1/community/comments", commentRoutes)
 app.use("/api/v1/notification", notificationRoutes)
 
 
-
-
-
-
 export default app
