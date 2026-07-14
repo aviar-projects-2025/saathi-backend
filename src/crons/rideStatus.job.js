@@ -15,25 +15,27 @@ cron.schedule("* * * * *", async () => {
     if (!rides.length) return;
 
     for (const ride of rides) {
-        const exists = await Notification.findOne({
-            userId: ride.createdBy,
-            type: "ride_started",
-            "data.rideId": ride._id,
-        });
+        // const exists = await Notification.findOne({
+            // type: "ride_started",
+            // "data.rideId": ride._id,
+        // });
 
-        if (!exists) {
-            await Notification.create({
-                userId: ride.createdBy,
-                type: "ride_started",
-                message: "Looks like you have started your ride, confirm!",
-                data: {
-                    rideId: ride._id,
-                    from: ride.from,
-                    destination: ride.destination,
-                },
-                isRead: false,
-            });
-        }
+        // console.log(exists, 'exists')
+
+        // if (!exists) {
+        //     const noti = await Notification.create({
+        //         userId: ride.createdBy,
+        //         type: "ride_started",
+        //         message: "Looks like you have started your ride, confirm!",
+        //         data: {
+        //             rideId: ride._id,
+        //             from: ride.from,
+        //             destination: ride.destination,
+        //         },
+        //         _id: noti?._id,
+        //         isRead: false,
+        //     });
+        // }
 
         emitNotification(ride.createdBy, {
             type: "ride_started",
