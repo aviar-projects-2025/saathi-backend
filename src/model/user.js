@@ -23,6 +23,8 @@ const userSchema = new mongoose.Schema({
     mobile: {
         type: String,
         unique: true,
+        sparse: true,
+        required: false,
     },
     bio: {
         type: String,

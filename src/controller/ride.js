@@ -1,3 +1,5 @@
+import { emitNotification } from '../../socket.js';
+import BookRide from '../model/bookride.js';
 import {
     createRideService,
     deleteRideService,
@@ -7,37 +9,37 @@ import {
 
 // controller
 export const createRide = async (req, res) => {
-  try {
-    const ride = await createRideService(req.body);
+    try {
+        const ride = await createRideService(req.body);
 
-    res.status(201).json({
-      success: true,
-      data: ride,
-    });
-  } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-  }
+        res.status(201).json({
+            success: true,
+            data: ride,
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: error.message,
+        });
+    }
 };
 
 export const checkActiveRide = async (req, res) => {
-  try {
-    const { userId } = req.params;
+    try {
+        const { userId } = req.params;
 
-    const hasActiveRide = await checkActiveRideService(userId);
+        const hasActiveRide = await checkActiveRideService(userId);
 
-    res.status(200).json({
-      success: true,
-      hasActiveRide,
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
+        res.status(200).json({
+            success: true,
+            hasActiveRide,
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: err.message,
+        });
+    }
 };
 
 export const getRides = async (req, res) => {
@@ -63,6 +65,27 @@ export const editRide = async (req, res) => {
 
         const updatedRide = await updateRideService(id, data);
         console.log(updatedRide, 'updateRide')
+        if (updatedRide) {
+            const bookedRide = await BookRide.find({
+                status: "ACCEPTED",
+                rideId: updatedRide._id,
+            })
+
+            for (const booking of bookedRide) {
+                emitNotification(booking.requestedBy, {
+                    type: "ride_status",
+                    message: `Your ride ${updatedRide.travelStatus}  🚀`,
+                    ride: {
+                        _id: updatedRide._id,
+                        from: updatedRide.from,
+                        destination: updatedRide.destination,
+                        startTime: updatedRide.startTime,
+                        modeOfTravel: updatedRide.modeOfTravel,
+                    },
+                    data: { rideId: updatedRide._id, status: updatedRide.travelStatus, },
+                });
+            }
+        }
         res.status(200).json({
             status: true,
             data: updatedRide

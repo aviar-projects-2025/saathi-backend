@@ -15,27 +15,28 @@ cron.schedule("* * * * *", async () => {
     if (!rides.length) return;
 
     for (const ride of rides) {
-        // const exists = await Notification.findOne({
-            // type: "ride_started",
-            // "data.rideId": ride._id,
-        // });
 
-        // console.log(exists, 'exists')
+        console.log(ride, 'ride')
+        const BookedRide = await BookRide.find({
+            status: "ACCEPTED",
+            rideId: ride._id,
+        });
 
-        // if (!exists) {
-        //     const noti = await Notification.create({
-        //         userId: ride.createdBy,
-        //         type: "ride_started",
-        //         message: "Looks like you have started your ride, confirm!",
-        //         data: {
-        //             rideId: ride._id,
-        //             from: ride.from,
-        //             destination: ride.destination,
-        //         },
-        //         _id: noti?._id,
-        //         isRead: false,
-        //     });
-        // }
+        for (const booking of BookedRide) {
+            console.log(booking,'booking')
+            emitNotification(booking.requestedBy, {
+                type: "ride_started",
+                message: "Your ride has started 🚀",
+                ride: {
+                    _id: ride._id,
+                    from: ride.from,
+                    destination: ride.destination,
+                    startTime: ride.startTime,
+                    modeOfTravel: ride.modeOfTravel,
+                },
+                data: { rideId: ride._id },
+            });
+        }
 
         emitNotification(ride.createdBy, {
             type: "ride_started",
@@ -49,6 +50,7 @@ cron.schedule("* * * * *", async () => {
             },
             data: { rideId: ride._id },
         });
+
     }
 
     // Step 2: update rides (VERY IMPORTANT)
