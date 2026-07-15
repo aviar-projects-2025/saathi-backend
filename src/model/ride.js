@@ -110,9 +110,18 @@ const rideSchema = new mongoose.Schema(
     },
 
     language: {
-      type: String,
+      type: [String],
       required: function () {
         return this.modeOfTravel === "Flight";
+      },
+      validate: {
+        validator: function (value) {
+          if (this.modeOfTravel === "Flight") {
+            return value && value.length > 0;
+          }
+          return true;
+        },
+        message: "Select at least one language",
       },
     },
 
@@ -154,7 +163,7 @@ const rideSchema = new mongoose.Schema(
 
     travelStatus: {
       type: String,
-      enum: ['Waiting','Started', 'Ongoing', 'Completed', 'Cancelled'],
+      enum: ['Waiting', 'Started', 'Ongoing', 'Completed', 'Cancelled'],
       default: "Waiting",
     },
 

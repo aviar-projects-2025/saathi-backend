@@ -30,7 +30,7 @@ export const createRideService = async (data) => {
 };
 // Get all
 export const getAllRideService = async () => {
-  return await Ride.find().populate("createdBy", "firstName lastName");
+  return await Ride.find().populate("createdBy", "firstName lastName").sort({ createdAt: -1 });
 };
 
 // Get single Ride
@@ -39,7 +39,7 @@ export const getRideById = async (id) => {
 };
 
 export const deleteRideService = async (id) => {
-    return await Ride.findByIdAndDelete(id);
+  return await Ride.findByIdAndDelete(id);
 }
 
 // edit service
