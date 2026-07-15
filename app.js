@@ -23,13 +23,9 @@ app.use("/api/v1/rides", rideRoutes)
 app.use("/api/v1/community", communityRoutes)
 app.use("/api/v1/referrals", referralRoutes)
 app.use("/api/v1/likes", likeRoutes)
-app.use("/api/v1/community/likes/", likeRoutes)
+app.use("/api/v1/community/likes", likeRoutes)
 app.use("/api/v1/community/comments", commentRoutes)
 app.use("/api/v1/notification", notificationRoutes)
-
-
-
-
 
 
 export default app

@@ -4,7 +4,7 @@ import Ride from "../model/ride.js";
 const createBookRideService = async (data) => {
   return await BookRide.create(data)
 }
- const getSentRequestsService = async (userId) => {
+const getSentRequestsService = async (userId) => {
   return await BookRide.find({ requestedBy: userId })
     .populate({
       path: "rideId",
@@ -17,13 +17,56 @@ const createBookRideService = async (data) => {
     .sort({ createdAt: -1 });
 };
 
-const editBookRideService = async (id, data) => {
-  return await BookRide.findByIdAndUpdate(
-    id,
-    data,
+// bookRide.service.js (or wherever editBookRideService lives)
+
+const editBookRideService = async (requestId, updates) => {
+  // 1. Load the existing request so we know which ride it belongs to
+  //    and how many seats it currently holds
+  const existingRequest = await BookRide.findById(requestId);
+  if (!existingRequest) {
+    throw new Error("Request not found");
+  }
+
+  // 2. Load the ride to check total seats
+  const ride = await Ride.findById(existingRequest.rideId);
+  if (!ride) {
+    throw new Error("Ride not found");
+  }
+
+  // 3. Sum seats held by OTHER pending requests on this ride
+  //    (exclude the request being edited, and cancelled/rejected ones)
+  const otherRequests = await BookRide.find({
+    rideId: ride._id,
+    _id: { $ne: requestId },
+    status: "PENDING",
+  });
+
+  const seatsHeldByOthers = otherRequests.reduce(
+    (sum, r) => sum + (r.seatsRequested || 0),
+    0
+  );
+
+  const seatsAvailableForThisEdit = ride.availableSeats - seatsHeldByOthers;
+
+  // 4. THE CONDITION — this is the check you're asking about
+  if (
+    ride.modeOfTravel !== "Flight" &&
+    Number(updates.seatsRequested) > seatsAvailableForThisEdit
+  ) {
+    throw new Error(
+      `Only ${seatsAvailableForThisEdit} seat(s) available`
+    );
+  }
+
+  // 5. Safe to update
+  const updatedRequest = await BookRide.findByIdAndUpdate(
+    requestId,
+    updates,
     { new: true }
   );
-}
+
+  return updatedRequest;
+};
 // get all 
 const getBookRideService = async (userId, type) => {
 

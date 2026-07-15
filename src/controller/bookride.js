@@ -15,9 +15,9 @@ const requestRide = async (req, res) => {
   try {
     const { rideId } = req.params;
     const data = req.body;
-    
+
     const ride = await Ride.findById(rideId);
-    console.log(ride,'ride ride')
+    console.log(ride, 'ride ride')
     if (!ride) {
       return res.status(404).json({ success: false, message: "Ride not found" });
     }
@@ -29,26 +29,35 @@ const requestRide = async (req, res) => {
       });
     }
 
-    const existingRequest = await Bookride.findOne({
+    const userRequests = await Bookride.find({
       rideId,
       requestedBy: data.requestedBy,
       status: "PENDING",
     });
 
-    if (existingRequest) {
-      return res.status(400).json({
-        success: false,
-        message: "You already requested this ride",
-      });
-    }
+    const alreadyRequestedSeats = userRequests.reduce(
+      (total, req) => total + Number(req.seatsRequested || 0),
+      0
+    );
 
     const isFlight = ride.modeOfTravel === "Flight";
 
-    if (!isFlight && Number(data.seatsRequested) > Number(ride.availableSeats)) {
-      return res.status(400).json({
-        success: false,
-        message: `Only ${ride.availableSeats} seat(s) available`,
-      });
+    if (!isFlight) {
+      const remainingSeats = Number(ride.availableSeats) - alreadyRequestedSeats;
+
+      if (remainingSeats <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "You have already requested all available seats.",
+        });
+      }
+
+      if (Number(data.seatsRequested) > remainingSeats) {
+        return res.status(400).json({
+          success: false,
+          message: `You can request only ${remainingSeats} more seat(s).`,
+        });
+      }
     }
 
     const bookingData = await Bookride.create({
@@ -259,12 +268,14 @@ const statusBookride = async (req, res) => {
 
 const editBookride = async (req, res) => {
   try {
-    const rides = await editBookRideService();
+    const { id } = req.params;       // the request _id from the URL
+    const updates = req.body;         // seatsRequested, membersCount, members, etc.
+
+    const updatedRide = await editBookRideService(id, updates);
 
     res.status(200).json({
       success: true,
-      totalRides: rides.length,
-      data: rides,
+      data: updatedRide,
     });
   } catch (error) {
     res.status(500).json({

@@ -21,6 +21,7 @@ export const createRide = async (req, res) => {
     });
   }
 };
+
 export const checkActiveRide = async (req, res) => {
   try {
     const { userId } = req.params;
