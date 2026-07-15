@@ -268,12 +268,14 @@ const statusBookride = async (req, res) => {
 
 const editBookride = async (req, res) => {
   try {
-    const rides = await editBookRideService();
+    const { id } = req.params;       // the request _id from the URL
+    const updates = req.body;         // seatsRequested, membersCount, members, etc.
+
+    const updatedRide = await editBookRideService(id, updates);
 
     res.status(200).json({
       success: true,
-      totalRides: rides.length,
-      data: rides,
+      data: updatedRide,
     });
   } catch (error) {
     res.status(500).json({
