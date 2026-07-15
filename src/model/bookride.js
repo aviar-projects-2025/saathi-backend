@@ -57,11 +57,7 @@ const bookRideSchema = new mongoose.Schema(
       default: [],
     },
 
-    phone: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+
 
     message: {
       type: String,
