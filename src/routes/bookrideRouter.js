@@ -15,6 +15,6 @@ router.get("/send/:userId", getBookrideSend);
 router.post("/:rideId", requestRide);
 router.put("/edit/:id", editBookride);
 router.patch("/:requestId/status", statusBookride);
-router.delete("/:userId", deleteBookride);
+router.delete("/:requestId", deleteBookride);
 
 export default router;

@@ -286,10 +286,12 @@ const editBookride = async (req, res) => {
 };
 
 const deleteBookride = async (req, res) => {
+    console.log("DELETE controller reached");
+  console.log(req.params);
   try {
-    const { userId } = req.params;
+    const { requestId } = req.params;
 
-    const ride = await deleteBookRideService(userId);
+    const ride = await deleteBookRideService(requestId);
     if (!ride) {
       return res.status(404).json({
         success: false,

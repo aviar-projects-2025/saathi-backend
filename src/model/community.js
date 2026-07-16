@@ -7,7 +7,7 @@ const communitySchema = new mongoose.Schema({
 
     description: {
         type: String,
-        required: true,
+        // required: "",
     },
 
     authorId: {
