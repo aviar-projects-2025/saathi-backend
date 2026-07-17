@@ -64,7 +64,6 @@ export const editRide = async (req, res) => {
         const data = req.body
 
         const updatedRide = await updateRideService(id, data);
-        console.log(updatedRide, 'updateRide')
         if (updatedRide) {
             const bookedRide = await BookRide.find({
                 status: "ACCEPTED",

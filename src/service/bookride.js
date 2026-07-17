@@ -139,7 +139,6 @@ const statusBookRide = async (requestId, type) => {
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    console.error(err);
     throw err;
   }
 };

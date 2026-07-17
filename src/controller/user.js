@@ -240,7 +240,6 @@ export const changePassword = async (req, res) => {
     const { currentPassword, newPassword, confirmPassword } = req.body;
     const { userId } = req.params
 
-    console.log("userId", userId)
     // Validation
     if (!currentPassword || !newPassword || !confirmPassword) {
       return res.status(400).json({
@@ -294,7 +293,6 @@ export const changePassword = async (req, res) => {
       message: "Password updated successfully.",
     });
   } catch (error) {
-    console.error(error);
     res.status(500).json({
       success: false,
       message: "Internal server error.",

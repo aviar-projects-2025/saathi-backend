@@ -15,15 +15,12 @@ cron.schedule("* * * * *", async () => {
     if (!rides.length) return;
 
     for (const ride of rides) {
-
-        console.log(ride, 'ride')
         const BookedRide = await BookRide.find({
             status: "ACCEPTED",
             rideId: ride._id,
         });
 
         for (const booking of BookedRide) {
-            console.log(booking,'booking')
             emitNotification(booking.requestedBy, {
                 type: "ride_started",
                 message: "Your ride has started 🚀",

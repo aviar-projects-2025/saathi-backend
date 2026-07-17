@@ -17,7 +17,6 @@ const requestRide = async (req, res) => {
     const data = req.body;
 
     const ride = await Ride.findById(rideId);
-    console.log(ride, 'ride ride')
     if (!ride) {
       return res.status(404).json({ success: false, message: "Ride not found" });
     }
@@ -107,7 +106,6 @@ const requestRide = async (req, res) => {
     });
 
   } catch (error) {
-    console.log("requestRide error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -258,7 +256,6 @@ const statusBookride = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("statusBookride error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -286,8 +283,7 @@ const editBookride = async (req, res) => {
 };
 
 const deleteBookride = async (req, res) => {
-    console.log("DELETE controller reached");
-  console.log(req.params);
+
   try {
     const { requestId } = req.params;
 

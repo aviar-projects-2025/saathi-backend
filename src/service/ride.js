@@ -45,7 +45,6 @@ export const deleteRideService = async (id) => {
 
 // edit service
 export const updateRideService = async (id, data) => {
-  console.log(id, data)
   await BookRide.updateMany(
     { rideId: id, status: "PENDING" },
     { status: "AUTO_REJECTED" }
