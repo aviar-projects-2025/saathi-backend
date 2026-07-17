@@ -79,20 +79,23 @@ export const createUser = async (req, res) => {
         actorName,
       });
 
-      await createNotificationService({
+      const notification = await createNotificationService({
         userId: referredBy,
         actorId: user._id,
         type: "referral_pending",
+        category:"New Referral",
         ...notif,
         data: {
           userId: user._id,
         },
       });
-
+      
       emitNotification(referredBy.toString(), {
         type: "referral_pending",
         message: notif.message,
+        category:"New Referral",
         data: {
+          _id: notification._id,
           userId: user._id,
           user: user,
         },

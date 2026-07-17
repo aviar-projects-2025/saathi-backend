@@ -34,7 +34,9 @@ export const updateNotificationStatus = async (req, res) => {
         const data =  {
             isRead: true
         }
+        console.log("notif update", id , data)
         const updateNotification = await updateNotificationStatusService(id, data);
+        console.log(updateNotification,'updatation notif')
         res.status(200).json({
             success: true,
             data: updateNotification

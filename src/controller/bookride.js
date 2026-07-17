@@ -42,7 +42,7 @@ const requestRide = async (req, res) => {
 
     const isFlight = ride.modeOfTravel === "Flight";
 
-    if (!isFlight) {
+    if (!isFlight && userRequests?.status !== "PENDING") {
       const remainingSeats = Number(ride.availableSeats) - alreadyRequestedSeats;
 
       if (remainingSeats <= 0) {
@@ -261,7 +261,7 @@ const statusBookride = async (req, res) => {
     console.error("statusBookride error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update ride request",
+      message: error.message,
     });
   }
 };
