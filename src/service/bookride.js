@@ -63,7 +63,14 @@ const editBookRideService = async (requestId, updates) => {
     requestId,
     updates,
     { new: true }
-  );
+  ).populate("requestedBy", "firstName lastName email profileImage")
+     .populate({
+      path: "rideId",
+      populate: {
+        path: "createdBy",
+        select: "firstName lastName email profileImage",
+      },
+    })
 
   return updatedRequest;
 };
@@ -79,7 +86,15 @@ const getBookRideService = async (userId, type) => {
   if (type === "received") {
     return await BookRide.find({
       rideOwner: userId,
-    }).populate('requestedBy', 'firstName lastName profileImage');
+    })
+    .populate({
+      path: "rideId",
+      populate: {
+        path: "createdBy",
+        select: "firstName lastName email profileImage",
+      },
+    })
+    .populate('requestedBy', 'firstName lastName profileImage');
   }
 
   return [];
