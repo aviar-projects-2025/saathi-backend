@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import BookRide from "../model/bookride.js";
 import Ride from "../model/ride.js";
 
@@ -101,12 +102,14 @@ const getBookRideService = async (userId, type) => {
 };
 
 const statusBookRide = async (requestId, type) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     // 1. Update request
     const request = await BookRide.findByIdAndUpdate(
       requestId,
       { status: type === "Approve" ? "ACCEPTED" : "REJECTED" },
-      { new: true }
+      { new: true, session }
     );
 
     if (!request) throw new Error("Request not found");
@@ -114,20 +117,23 @@ const statusBookRide = async (requestId, type) => {
     // 2. Only proceed if approved
     if (type === "Approve") {
       const rideId = request.rideId;
-      const seatsRequested = request.seatsRequested || 1;
+      const seatsRequested = request.seatsRequested;
 
       // 3. Get current ride
-      const ride = await Ride.findById(rideId);
+      const ride = await Ride.findById(rideId).session(session);
 
       if (!ride) throw new Error("Ride not found");
 
       // 4. Reduce seats
+      if (ride.availableSeats < seatsRequested) {
+        throw new Error(seatsRequested + ` seats not available, ${ride.availableSeats} seats only left`);
+      }
       const updatedSeats = ride.availableSeats - seatsRequested;
 
       // 5. Decide status
       let updatedStatus = ride.status;
-      if (updatedSeats <= 0) {
-        updatedStatus = "FULL"; // or "CLOSED"
+      if (updatedSeats === 0) {
+        updatedStatus = "FULL";
       }
 
       // 6. Update ride
@@ -137,13 +143,17 @@ const statusBookRide = async (requestId, type) => {
           availableSeats: updatedSeats,
           status: updatedStatus
         },
-        { new: true }
+        { new: true, session }
       );
+
     }
 
+    await session.commitTransaction();
+    session.endSession();
     return request;
   } catch (err) {
-    console.error(err);
+    await session.abortTransaction();
+    session.endSession();
     throw err;
   }
 };

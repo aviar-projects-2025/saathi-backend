@@ -79,20 +79,23 @@ export const createUser = async (req, res) => {
         actorName,
       });
 
-      await createNotificationService({
+      const notification = await createNotificationService({
         userId: referredBy,
         actorId: user._id,
         type: "referral_pending",
+        category:"New Referral",
         ...notif,
         data: {
           userId: user._id,
         },
       });
-
+      
       emitNotification(referredBy.toString(), {
         type: "referral_pending",
         message: notif.message,
+        category:"New Referral",
         data: {
+          _id: notification._id,
           userId: user._id,
           user: user,
         },
@@ -237,7 +240,6 @@ export const changePassword = async (req, res) => {
     const { currentPassword, newPassword, confirmPassword } = req.body;
     const { userId } = req.params
 
-    console.log("userId", userId)
     // Validation
     if (!currentPassword || !newPassword || !confirmPassword) {
       return res.status(400).json({
@@ -291,7 +293,6 @@ export const changePassword = async (req, res) => {
       message: "Password updated successfully.",
     });
   } catch (error) {
-    console.error(error);
     res.status(500).json({
       success: false,
       message: "Internal server error.",
