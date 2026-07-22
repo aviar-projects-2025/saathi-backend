@@ -42,12 +42,44 @@ export const getRideById = async (id) => {
 export const deleteRideService = async (id) => {
   return await Ride.findByIdAndDelete(id);
 }
+// service/ride.js
 
+export const getTopRider = async () => {
+  return await User.findOne().sort({ completedRideCount: -1 });
+};
+// service/ride.js
+
+export const getTopRiders = async (limit = 10) => {
+  return await User.find()
+    .sort({ completedRideCount: -1 })
+    .limit(limit);
+};
 // edit service
+// export const updateRideService = async (id, data) => {
+//   await BookRide.updateMany(
+//     { rideId: id, status: "PENDING" },
+//     { status: "AUTO_REJECTED" }
+//   );
+//   return await Ride.findByIdAndUpdate(id, data, { new: true });
+// };
+
 export const updateRideService = async (id, data) => {
   await BookRide.updateMany(
     { rideId: id, status: "PENDING" },
     { status: "AUTO_REJECTED" }
   );
-  return await Ride.findByIdAndUpdate(id, data, { new: true });
+
+  const existingRide = await Ride.findById(id);
+  const updatedRide = await Ride.findByIdAndUpdate(id, data, { new: true });
+
+  if (
+    data.travelStatus === "Completed" &&
+    existingRide.travelStatus !== "Completed"
+  ) {
+    await User.findByIdAndUpdate(updatedRide.createdBy, {
+      $inc: { completedRideCount: 1 },
+    });
+  }
+
+  return updatedRide;
 };

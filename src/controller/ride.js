@@ -133,3 +133,19 @@ export const getUserRides = async (req, res) => {
         })
     }
 }
+
+
+export const getTopRider = async (req, res) => {
+  try {
+    const rider = await getTopRider();
+    res.status(200).json({
+      success: true,
+      data: rider,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};

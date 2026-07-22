@@ -21,6 +21,13 @@ export const loggedinUser = async (email) => {
   return user;
 }
 
+export const getTopRidersService = async (limit = 5) => {
+  return await User.find({ completedRideCount: { $gt: 0 } })
+    .sort({ completedRideCount: -1 })
+    .limit(limit)
+    .select("firstName lastName city completedRideCount isVerified");
+};
+
 export const updateProfileService = async (userId, data) => {
 
   const isExist = await User.findById(userId);
