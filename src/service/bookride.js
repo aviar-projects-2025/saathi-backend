@@ -42,22 +42,22 @@ const editBookRideService = async (requestId, updates) => {
     status: "PENDING",
   });
 
-  const seatsHeldByOthers = otherRequests.reduce(
-    (sum, r) => sum + (r.seatsRequested || 0),
-    0
-  );
+  // const seatsHeldByOthers = otherRequests.reduce(
+  //   (sum, r) => sum + (r.seatsRequested || 0),
+  //   0
+  // );
 
-  const seatsAvailableForThisEdit = ride.availableSeats - seatsHeldByOthers;
+  // const seatsAvailableForThisEdit = ride.availableSeats - seatsHeldByOthers;
 
   // 4. THE CONDITION — this is the check you're asking about
-  if (
-    ride.modeOfTravel !== "Flight" &&
-    Number(updates.seatsRequested) > seatsAvailableForThisEdit
-  ) {
-    throw new Error(
-      `Only ${seatsAvailableForThisEdit} seat(s) available`
-    );
-  }
+  // if (
+  //   ride.modeOfTravel !== "Flight" &&
+  //   Number(updates.seatsRequested) > seatsAvailableForThisEdit
+  // ) {
+  //   throw new Error(
+  //     `Only ${seatsAvailableForThisEdit} seat(s) available`
+  //   );
+  // }
 
   // 5. Safe to update
   const updatedRequest = await BookRide.findByIdAndUpdate(
