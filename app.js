@@ -9,7 +9,7 @@ import bookrideRouter from "./src/routes/bookrideRouter.js"
 import likeRoutes from "./src/routes/likeRoutes.js"
 import commentRoutes from "./src/routes/commentRoutes.js"
 import notificationRoutes from "./src/routes/notificationRouter.js"
-
+import rideRatingRoutes from "./src/routes/riderRatingroutes.js"
 
 
 const app = express();
@@ -26,6 +26,6 @@ app.use("/api/v1/likes", likeRoutes)
 app.use("/api/v1/community/likes", likeRoutes)
 app.use("/api/v1/community/comments", commentRoutes)
 app.use("/api/v1/notification", notificationRoutes)
-
+app.use("/api/v1/rideRating",rideRatingRoutes)
 
 export default app
