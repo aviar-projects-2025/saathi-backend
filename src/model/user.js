@@ -59,19 +59,17 @@ const userSchema = new mongoose.Schema({
         enum: ["Approved", "Waiting", 'Declined'],
         default: "Waiting",
     },
-    // model/user.js (add this field to your existing schema)
-// model/user.js (add if not already present)
-completedRideCount: {
-  type: Number,
-  default: 0,
-},
-city: {
-  type: String,
-},
-isVerified: {
-  type: Boolean,
-  default: false,
-},
+    completedRideCount: {
+        type: Number,
+        default: 0,
+    },
+    // city: {
+    //   type: String,
+    // },
+    // isVerified: {
+    //   type: Boolean,
+    //   default: false,
+    // },
 }, {
     timestamps: true
 })

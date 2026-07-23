@@ -21,7 +21,7 @@ export const loggedinUser = async (email) => {
   return user;
 }
 
-export const getTopRidersService = async (limit = 5) => {
+export const getTopRidersService = async (limit) => {
   return await User.find({ completedRideCount: { $gt: 0 } })
     .sort({ completedRideCount: -1 })
     .limit(limit)
