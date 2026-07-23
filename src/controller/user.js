@@ -14,6 +14,7 @@ import cloudinary from '../../config/cloudinary.js';
 import streamifier from 'streamifier'
 import { buildNotification, createNotificationService } from '../service/notification.js';
 import { emitNotification } from '../../socket.js';
+import { sendWelcomePendingEmail } from '../../config/sendMail.js';
 
 // Token Generation
 export const generateToken = (user) => {
@@ -103,6 +104,17 @@ export const createUser = async (req, res) => {
         },
       });
     }
+
+    console.log('User Register mail progresss')
+
+    //sendmail
+    sendWelcomePendingEmail(
+      email,
+      firstName + " " + lastName,
+    )
+
+    console.log('User Register mail crossed')
+
 
     res.status(201).json({
       success: true,

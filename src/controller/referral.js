@@ -1,3 +1,4 @@
+import { sendApprovalEmail } from '../../config/sendMail.js';
 import { emitNotification } from '../../socket.js';
 import User from '../model/user.js';
 import { buildNotification, createNotificationService } from '../service/notification.js';
@@ -61,17 +62,11 @@ export const updateReferrals = async (req, res) => {
                 data: { status },
             });
 
-            // 🔥 OPTIONAL: Notify referrer also
-            //   if (user.referredBy) {
-            //     emitNotification(user.referredBy.toString(), {
-            //       type: notifType,
-            //       message:
-            //         status === "Approved"
-            //           ? "Your referral was approved 🎉"
-            //           : "Your referral was rejected",
-            //       data: { userId: user._id },
-            //     });
-            //   }
+            // send mail
+            sendApprovalEmail(
+                approvedUser?.email,
+                approvedUser.firstName + " " + approvedUser.lastName
+            );
         }
 
         res.status(200).json({
