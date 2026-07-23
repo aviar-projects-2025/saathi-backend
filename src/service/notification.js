@@ -49,6 +49,12 @@ export const buildNotification = ({ type, actorName }) => {
                 message: `Ride details have been updated`,
             };
 
+        case "new_ride_added":
+            return {
+                title: "New Rides",
+                message: `Ride details have been updated`,
+            };
+
         case "referral_pending":
             return {
                 title: "New Referral",

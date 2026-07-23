@@ -1,5 +1,6 @@
-import { emitNotification } from '../../socket.js';
+import { broadcastNotification, emitNotification } from '../../socket.js';
 import BookRide from '../model/bookride.js';
+import { buildNotification } from '../service/notification.js';
 import {
     createRideService,
     deleteRideService,
@@ -11,6 +12,16 @@ import {
 export const createRide = async (req, res) => {
     try {
         const ride = await createRideService(req.body);
+
+        if (ride) {
+            const newRideUpdate = buildNotification({ type: "new_ride_added" });
+
+            broadcastNotification({
+                type: "new_ride_added",
+                message: newRideUpdate.message,
+                data: ride,
+            });
+        }
 
         res.status(201).json({
             success: true,
