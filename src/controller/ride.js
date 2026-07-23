@@ -7,6 +7,9 @@ import {
     getAllRideService,
     updateRideService,
 } from '../service/ride.js'
+import Ride from "../model/ride.js";
+import User from "../model/user.js";
+
 
 // controller
 export const createRide = async (req, res) => {
@@ -69,45 +72,57 @@ export const getRides = async (req, res) => {
     }
 }
 // Update
+
+
 export const editRide = async (req, res) => {
     try {
-        const { id } = req.params
-        const data = req.body
+        const { id } = req.params;
+        const data = req.body;
 
         const updatedRide = await updateRideService(id, data);
-        if (updatedRide) {
-            const bookedRide = await BookRide.find({
-                status: "ACCEPTED",
-                rideId: updatedRide._id,
-            })
 
-            for (const booking of bookedRide) {
-                emitNotification(booking.requestedBy, {
-                    type: "ride_status",
-                    message: `Your ride ${updatedRide.travelStatus}  🚀`,
-                    ride: {
-                        _id: updatedRide._id,
-                        from: updatedRide.from,
-                        destination: updatedRide.destination,
-                        startTime: updatedRide.startTime,
-                        modeOfTravel: updatedRide.modeOfTravel,
-                    },
-                    data: { rideId: updatedRide._id, status: updatedRide.travelStatus, },
-                });
-            }
+        if (!updatedRide) {
+            return res.status(404).json({
+                success: false,
+                message: "Ride not found",
+            });
         }
-        res.status(200).json({
-            status: true,
-            data: updatedRide
-        })
+
+        const bookedRide = await BookRide.find({
+            status: "ACCEPTED",
+            rideId: updatedRide._id,
+        });
+
+        for (const booking of bookedRide) {
+            emitNotification(booking.requestedBy, {
+                type: "ride_status",
+                message: `Your ride ${updatedRide.travelStatus} 🚀`,
+                ride: {
+                    _id: updatedRide._id,
+                    from: updatedRide.from,
+                    destination: updatedRide.destination,
+                    startTime: updatedRide.startTime,
+                    modeOfTravel: updatedRide.modeOfTravel,
+                },
+                data: {
+                    rideId: updatedRide._id,
+                    status: updatedRide.travelStatus,
+                },
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: updatedRide,
+        });
 
     } catch (error) {
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
-            message: error.message
-        })
+            message: error.message,
+        });
     }
-}
+};
 
 // Delete
 export const deleteRide = async (req, res) => {
@@ -144,3 +159,19 @@ export const getUserRides = async (req, res) => {
         })
     }
 }
+
+
+// export const getTopRider = async (req, res) => {
+//   try {
+//     const rider = await getTopRider();
+//     res.status(200).json({
+//       success: true,
+//       data: rider,
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };

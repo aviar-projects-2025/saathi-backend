@@ -3,8 +3,10 @@ import {
   getAllUsers,
   loggedinUser,
   getUserById,
+  getTopRidersService,
   updateProfileService,
 } from '../service/user.js'
+
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import User from '../model/user.js'
@@ -83,17 +85,17 @@ export const createUser = async (req, res) => {
         userId: referredBy,
         actorId: user._id,
         type: "referral_pending",
-        category:"New Referral",
+        category: "New Referral",
         ...notif,
         data: {
           userId: user._id,
         },
       });
-      
+
       emitNotification(referredBy.toString(), {
         type: "referral_pending",
         message: notif.message,
-        category:"New Referral",
+        category: "New Referral",
         data: {
           _id: notification._id,
           userId: user._id,
@@ -326,6 +328,26 @@ export const updateProfile = async (req, res) => {
       success: true,
       message: "Profile updated",
       data,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// controller/user.js
+
+
+export const getTopRiders = async (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 5;
+
+    const riders = await getTopRidersService(limit);
+    res.status(200).json({
+      success: true,
+      data: riders,
     });
   } catch (error) {
     res.status(500).json({
