@@ -66,6 +66,9 @@ const requestRide = async (req, res) => {
       requestedBy: data.requestedBy,
     });
 
+    const populatedBooking = await Bookride.findById(bookingData._id)
+      .populate("requestedBy", "firstName lastName profileImage email");
+
     const actorName = data.firstName;
 
     const notif = buildNotification({
@@ -73,9 +76,7 @@ const requestRide = async (req, res) => {
       actorName,
     });
 
-
-
-    await createNotificationService({
+    const notifictioncreated = await createNotificationService({
       userId: ride.createdBy,
       actorId: data.requestedBy,
       type: "new_request",
@@ -91,8 +92,13 @@ const requestRide = async (req, res) => {
     emitNotification(ride.createdBy.toString(), {
       type: "new_request",
       message: notif.message,
+      category: notif.title,
       data: {
+        bookingData,
+        _id: notifictioncreated._id,
         rideId,
+        profileImage : populatedBooking?.requestedBy?.profileImage,
+        requestBy:populatedBooking,
         requestId: bookingData._id,
       },
     });
@@ -223,7 +229,6 @@ const statusBookride = async (req, res) => {
       }
     }
 
-    // 🔔 Notification for current request
     const notif = buildNotification({ type: notifType });
 
     await createNotificationService({

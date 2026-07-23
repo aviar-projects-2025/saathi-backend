@@ -44,3 +44,8 @@ export const emitNotification = (userId, payload) => {
   const io = getIO();
   io.to(String(userId)).emit("notification", payload);
 };
+
+export const broadcastNotification = (payload) => {
+  const io = getIO();
+  io.to("rides_room").emit("notification", payload);
+};
