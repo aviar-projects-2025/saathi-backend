@@ -317,18 +317,35 @@ export const changePassword = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const { userId } = req.params;
+    const user = await User.findById(userId);
 
 
     let imageUrl = "";
 
-    if (req.file) {
-      const result = await uploadToCloudinary(req.file.buffer);
-      imageUrl = result.secure_url;
-    }
-
     const databody = {
       ...req.body,
     };
+
+    if (req.file) {
+      if (user?.imagePublicId) {
+        await cloudinary.uploader.destroy(user.imagePublicId);
+      }
+
+      const result = await uploadToCloudinary(req.file.buffer);
+      imageUrl = result.secure_url;
+      databody.imagePublicId = result.public_id;
+    }
+
+    const { mobile } = req.body;
+    if (mobile) {
+      const existingUser = await User.findOne({ mobile });
+
+      if (existingUser && existingUser._id.toString() !== userId) {
+        return res.status(400).json({
+          message: "Mobile number already exists",
+        });
+      }
+    }
 
     if (imageUrl) {
       databody.profileImage = imageUrl;

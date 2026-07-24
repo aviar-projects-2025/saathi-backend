@@ -46,6 +46,18 @@ const bookRideSchema = new mongoose.Schema(
       min: 1,
     },
 
+    approvedSeats: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+
+    pendingReqSeats: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+
     membersCount: {
       type: Number,
       required: true,

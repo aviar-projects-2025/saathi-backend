@@ -23,8 +23,6 @@ const userSchema = new mongoose.Schema({
     mobile: {
         type: String,
         unique: true,
-        sparse: true,
-        required: false,
     },
     bio: {
         type: String,
@@ -63,6 +61,9 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 0,
     },
+    imagePublicId: {
+        type: String,
+    }
     // city: {
     //   type: String,
     // },

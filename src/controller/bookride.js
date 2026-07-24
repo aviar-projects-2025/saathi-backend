@@ -16,6 +16,7 @@ const requestRide = async (req, res) => {
     const { rideId } = req.params;
     const data = req.body;
 
+    // console.log(data, 'seat data request')
     const ride = await Ride.findById(rideId);
     if (!ride) {
       return res.status(404).json({ success: false, message: "Ride not found" });
@@ -62,6 +63,7 @@ const requestRide = async (req, res) => {
     const bookingData = await Bookride.create({
       ...data,
       rideId,
+      pendingReqSeats : data.seatsRequested,
       rideOwner: ride.createdBy,
       requestedBy: data.requestedBy,
     });
@@ -97,8 +99,8 @@ const requestRide = async (req, res) => {
         bookingData,
         _id: notifictioncreated._id,
         rideId,
-        profileImage : populatedBooking?.requestedBy?.profileImage,
-        requestBy:populatedBooking,
+        profileImage: populatedBooking?.requestedBy?.profileImage,
+        requestBy: populatedBooking,
         requestId: bookingData._id,
       },
     });
@@ -187,6 +189,8 @@ const statusBookride = async (req, res) => {
     if (statusType === "Approve") {
       const ride = await Ride.findById(rides.rideId);
 
+      console.log(ride,'rideride')
+
       if (ride && ride.availableSeats === 0) {
         const pendingRequests = await Bookride.find({
           rideId: ride._id,
@@ -270,9 +274,10 @@ const statusBookride = async (req, res) => {
 
 const editBookride = async (req, res) => {
   try {
-    const { id } = req.params;       // the request _id from the URL
-    const updates = req.body;         // seatsRequested, membersCount, members, etc.
+    const { id } = req.params;
+    const updates = req.body;
 
+    console.log(updates, 'updaatesss')
     const updatedRide = await editBookRideService(id, updates);
 
     res.status(200).json({

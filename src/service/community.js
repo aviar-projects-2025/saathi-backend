@@ -1,13 +1,13 @@
+import cloudinary from "../../config/cloudinary.js";
 import Community from "../model/community.js";
 
 
 
 export const createPostService = async (data) => {
-    return await Community.create(data);
+  return await Community.create(data);
 }
 export const deletePostService = async (postId, userId) => {
   const post = await Community.findById(postId);
-
   if (!post) {
     const error = new Error("Post not found");
     error.statusCode = 404;
@@ -20,6 +20,10 @@ export const deletePostService = async (postId, userId) => {
     throw error;
   }
 
+  if (post?.communityImgPublicId) {
+    await cloudinary.uploader.destroy(post?.communityImgPublicId);
+  }
+
   await Community.findByIdAndDelete(postId);
 
   return {
@@ -27,15 +31,20 @@ export const deletePostService = async (postId, userId) => {
   };
 };
 export const getPostsService = async () => {
-    return await Community.find().populate("authorId", "firstName lastName referralCode profileImage bio").sort({ createdAt: -1 });;
+  return await Community.find().populate("authorId", "firstName lastName referralCode profileImage bio").sort({ createdAt: -1 });;
 }
 export const editPostService = async (
   postId,
   userId,
   description,
-  imageUrl
+  imageUrl,
+  communityImgPublicId
 ) => {
   const post = await Community.findById(postId);
+
+  if (post?.communityImgPublicId) {
+    await cloudinary.uploader.destroy(post?.communityImgPublicId);
+  }
 
   if (!post) {
     const error = new Error("Post not found");
@@ -54,6 +63,7 @@ export const editPostService = async (
   // Only update image if a new one was uploaded
   if (imageUrl) {
     post.postImage = imageUrl;
+    post.communityImgPublicId = communityImgPublicId;
   }
 
   await post.save();

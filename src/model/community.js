@@ -19,6 +19,9 @@ const communitySchema = new mongoose.Schema({
         type: Number,
         default: 0,
     },
+    communityImgPublicId : {
+        type : String,
+    },
     comments: [
         {
             userId: {

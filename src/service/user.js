@@ -34,18 +34,21 @@ export const updateProfileService = async (userId, data) => {
   if (!isExist) {
     throw new Error("User not found");
   }
-  const mobile = await User.find({
-    mobile: data.mobile
-  })
+  
+  // const mobile = await User.find({
+  //   mobile: data.mobile
+  // })
 
-  if (mobile.length !== 0) {
-    throw new Error('Mobile no already exist!')
-  }
+  // if (mobile.length !== 0) {
+  //   throw new Error('Mobile no already exist!')
+  // }
 
   const updatedUser = await User.findByIdAndUpdate(
     userId,
     data,
     { new: true }
   )
+
+
   return updatedUser;
 }

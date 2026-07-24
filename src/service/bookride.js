@@ -21,11 +21,18 @@ const getSentRequestsService = async (userId) => {
 // bookRide.service.js (or wherever editBookRideService lives)
 
 const editBookRideService = async (requestId, updates) => {
-  // 1. Load the existing request so we know which ride it belongs to
-  //    and how many seats it currently holds
+
   const existingRequest = await BookRide.findById(requestId);
   if (!existingRequest) {
     throw new Error("Request not found");
+  }
+
+  console.log(existingRequest, 'existingRequest')
+  if (existingRequest.membersCount < updates.membersCount && existingRequest?.status === 'ACCEPTED') {
+    updates = {
+      ...updates,
+      pendingReqSeats: updates.membersCount - existingRequest.membersCount
+    }
   }
 
   // 2. Load the ride to check total seats
@@ -36,11 +43,11 @@ const editBookRideService = async (requestId, updates) => {
 
   // 3. Sum seats held by OTHER pending requests on this ride
   //    (exclude the request being edited, and cancelled/rejected ones)
-  const otherRequests = await BookRide.find({
-    rideId: ride._id,
-    _id: { $ne: requestId },
-    status: "PENDING",
-  });
+  // const otherRequests = await BookRide.find({
+  //   rideId: ride._id,
+  //   _id: { $ne: requestId },
+  //   status: "PENDING",
+  // });
 
   // const seatsHeldByOthers = otherRequests.reduce(
   //   (sum, r) => sum + (r.seatsRequested || 0),
@@ -65,7 +72,7 @@ const editBookRideService = async (requestId, updates) => {
     updates,
     { new: true }
   ).populate("requestedBy", "firstName lastName email profileImage")
-     .populate({
+    .populate({
       path: "rideId",
       populate: {
         path: "createdBy",
@@ -88,14 +95,14 @@ const getBookRideService = async (userId, type) => {
     return await BookRide.find({
       rideOwner: userId,
     })
-    .populate({
-      path: "rideId",
-      populate: {
-        path: "createdBy",
-        select: "firstName lastName email profileImage",
-      },
-    })
-    .populate('requestedBy', 'firstName lastName profileImage');
+      .populate({
+        path: "rideId",
+        populate: {
+          path: "createdBy",
+          select: "firstName lastName email profileImage",
+        },
+      })
+      .populate('requestedBy', 'firstName lastName profileImage');
   }
 
   return [];
@@ -105,10 +112,31 @@ const statusBookRide = async (requestId, type) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    // 1. Update request
+
+    const rideRequested = await BookRide.findById(requestId)
+
+    let status;
+    let approvedSeats = rideRequested.approvedSeats || 0;
+    let pendingReqSeats = rideRequested.pendingReqSeats || 0;
+
+    if (type === "Approve") {
+      status = "ACCEPTED"
+      if (pendingReqSeats > 0) {
+        approvedSeats += pendingReqSeats;
+        pendingReqSeats = 0;
+      }
+    } else {
+      status = "REJECTED"
+    }
+
+
     const request = await BookRide.findByIdAndUpdate(
       requestId,
-      { status: type === "Approve" ? "ACCEPTED" : "REJECTED" },
+      {
+        status,
+        approvedSeats,
+        pendingReqSeats
+      },
       { new: true, session }
     );
 
@@ -118,6 +146,7 @@ const statusBookRide = async (requestId, type) => {
     if (type === "Approve") {
       const rideId = request.rideId;
       const seatsRequested = request.seatsRequested;
+
 
       // 3. Get current ride
       const ride = await Ride.findById(rideId).session(session);
