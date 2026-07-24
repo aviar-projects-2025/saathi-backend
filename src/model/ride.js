@@ -45,7 +45,9 @@ const rideSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-
+    duration:{
+      type: Number,
+    },
     // Flight fields
     fromCountry: {
       type: String,
