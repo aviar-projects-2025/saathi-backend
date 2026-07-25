@@ -42,7 +42,7 @@ const rideSchema = new mongoose.Schema(
     },
 
     fuelSharing: {
-      type: Boolean,
+      type: Number,
       default: false,
     },
     duration:{
