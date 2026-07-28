@@ -40,7 +40,12 @@ const rideSchema = new mongoose.Schema(
       },
       default: 1,
     },
-
+     totalSeats:{
+      type: Number,
+         required: function () {
+        return this.modeOfTravel !== "Flight";
+      },
+     },
     fuelSharing: {
       type: Number,
    
@@ -126,7 +131,9 @@ const rideSchema = new mongoose.Schema(
         message: "Select at least one language",
       },
     },
-
+  //  totalSeats:{
+  //     type: Number,
+  //  },
     ageGroupPreference: {
       type: String,
       enum: ["18-25", "26-40", "41-60", "60+", "Any"],
