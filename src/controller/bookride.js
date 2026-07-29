@@ -16,7 +16,7 @@ const requestRide = async (req, res) => {
     const { rideId } = req.params;
     const data = req.body;
 
-    // console.log(data, 'seat data request')
+    console.log(data, 'seat data request')
     const ride = await Ride.findById(rideId);
     if (!ride) {
       return res.status(404).json({ success: false, message: "Ride not found" });

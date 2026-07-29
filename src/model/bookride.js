@@ -63,13 +63,16 @@ const bookRideSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
-
+    // Approved Members
     members: {
       type: [memberSchema],
       default: [],
     },
-
-
+    //Pending Members
+    pendingMembers: {
+      type: [memberSchema],
+      default: [],
+    },
 
     message: {
       type: String,
