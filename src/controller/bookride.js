@@ -63,7 +63,7 @@ const requestRide = async (req, res) => {
     const bookingData = await Bookride.create({
       ...data,
       rideId,
-      pendingReqSeats : data.seatsRequested,
+      pendingReqSeats: data.seatsRequested,
       rideOwner: ride.createdBy,
       requestedBy: data.requestedBy,
     });
@@ -179,6 +179,8 @@ const statusBookride = async (req, res) => {
     // 🔹 Your existing logic (this already reduces seat 👍)
     const rides = await statusBookRide(requestId, statusType);
 
+    console.log(rides,'rides createde')
+
     if (!rides) {
       return res.status(404).json({
         success: false,
@@ -189,7 +191,7 @@ const statusBookride = async (req, res) => {
     if (statusType === "Approve") {
       const ride = await Ride.findById(rides.rideId);
 
-      console.log(ride,'rideride')
+      console.log(ride, 'rideride')
 
       if (ride && ride.availableSeats === 0) {
         const pendingRequests = await Bookride.find({
@@ -235,7 +237,7 @@ const statusBookride = async (req, res) => {
 
     const notif = buildNotification({ type: notifType });
 
-    await createNotificationService({
+    const notifictioncreated = await createNotificationService({
       userId: rides.requestedBy,
       actorId: rides.rideOwner,
       type: notifType,
@@ -249,7 +251,10 @@ const statusBookride = async (req, res) => {
     emitNotification(rides.requestedBy.toString(), {
       type: notifType,
       message: notif.message,
+      category: notif.title,
       data: {
+        _id: notifictioncreated._id,
+        // profileImage: populatedBooking?.requestedBy?.profileImage,
         rideId: rides.rideId,
         requestId: rides._id,
       },

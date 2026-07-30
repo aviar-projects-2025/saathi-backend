@@ -27,7 +27,7 @@ export const buildNotification = ({ type, actorName }) => {
 
         case "request_accepted":
             return {
-                title: "Request Accepted",
+                title: "Ride Request Accepted",
                 message: `Your ride request was accepted`,
             };
 
