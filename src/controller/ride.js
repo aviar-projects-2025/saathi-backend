@@ -1,6 +1,6 @@
 import { broadcastNotification, emitNotification } from '../../socket.js';
 import BookRide from '../model/bookride.js';
-import { buildNotification } from '../service/notification.js';
+import { buildNotification, createNotificationService } from '../service/notification.js';
 import {
     createRideService,
     deleteRideService,
@@ -73,7 +73,6 @@ export const getRides = async (req, res) => {
 }
 // Update
 
-
 export const editRide = async (req, res) => {
     try {
         const { id } = req.params;
@@ -143,7 +142,6 @@ export const deleteRide = async (req, res) => {
     }
 }
 
-//Get All Rides 
 export const getUserRides = async (req, res) => {
     const { id } = req.params;
     try {
@@ -152,6 +150,70 @@ export const getUserRides = async (req, res) => {
             success: true,
             data: ride,
         })
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        })
+    }
+}
+
+export const cancelRide = async (req, res) => {
+    try {
+        const { id } = req.params
+
+        const updatedRide = await Ride.findByIdAndUpdate(
+            id,
+            { travelStatus: 'Cancelled' },
+            { new: true }
+        )
+
+        console.log(updatedRide, 'Ride')
+
+        const ReqLists = await BookRide.find({
+            status: 'ACCEPTED',
+            rideId: id
+        });
+
+        for (const Req of ReqLists) {
+
+            const notifictioncreated = await createNotificationService({
+                userId: updatedRide.createdBy,
+                actorId: Req.requestedBy,
+                type: "request_cancelled",
+                data: {
+                    rideId: Req.rideId,
+                    requestId: Req._id,
+                    from: updatedRide.from,
+                    destination: updatedRide.destination,
+                },
+            });
+
+            emitNotification(Req.requestedBy, {
+                type: "ride_status",
+                message: `Your ride ${updatedRide?.travelStatus}`,
+                ride: {
+                    _id: updatedRide._id,
+                    from: updatedRide.from,
+                    destination: updatedRide.destination,
+                    startTime: updatedRide.startTime,
+                    modeOfTravel: updatedRide.modeOfTravel,
+                },
+                data: {
+                    _id: notifictioncreated._id,
+                    rideId: updatedRide._id,
+                    status: updatedRide.travelStatus,
+                },
+            })
+
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Ride Cancelled'
+        })
+
+
     } catch (error) {
         res.status(500).json({
             success: false,
