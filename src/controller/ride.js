@@ -178,20 +178,26 @@ export const cancelRide = async (req, res) => {
         for (const Req of ReqLists) {
 
             const notifictioncreated = await createNotificationService({
-                userId: updatedRide.createdBy,
-                actorId: Req.requestedBy,
+                userId: Req.requestedBy,
+                actorId: updatedRide.createdBy,
                 type: "request_cancelled",
+                message: `Your ride cancelled`,
                 data: {
-                    rideId: Req.rideId,
+                    _id: notifictioncreated._id,
+                    rideId: updatedRide._id,
+                    status: updatedRide.travelStatus,
                     requestId: Req._id,
                     from: updatedRide.from,
                     destination: updatedRide.destination,
                 },
             });
 
+            console.log(notifictioncreated, 'notifictioncreated')
+
             emitNotification(Req.requestedBy, {
-                type: "ride_status",
-                message: `Your ride ${updatedRide?.travelStatus}`,
+                type: "ride_cancelled",
+                message: `Your ride cancelled`,
+                category: 'Ride Cancelled',
                 ride: {
                     _id: updatedRide._id,
                     from: updatedRide.from,
