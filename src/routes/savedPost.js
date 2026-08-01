@@ -1,5 +1,5 @@
 import express from 'express'
-import { savePost, getPostById , removeSavedPost} from '../controller/SavedPost.js';
+import { savePost, getPostById , removeSavedPost} from '../controller/savedPost.js';
 
 
 const router = express.Router()
