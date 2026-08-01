@@ -13,6 +13,7 @@ const memberSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
+ 
   },
   { _id: false }
 );
@@ -39,7 +40,10 @@ const bookRideSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-
+     phone: {
+        type: String,
+        required: true,
+    },
     seatsRequested: {
       type: Number,
       default: 1,
