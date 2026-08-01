@@ -44,22 +44,25 @@ export const postReplyComment = async (req, res) => {
         })
     }
 }
-
 export const getComments = async (req, res) => {
-    try {
-        const { postId } = req.params
-        const data = await getCommentService(postId);
-        res.status(201).json({
-            status: true,
-            data: data,
-        })
-    } catch (error) {
-        res.status(500).json({
-            status: false,
-            message: "Comment failed to fetch"
-        })
-    }
-}
+  try {
+    const { postId,userId} = req.params;
+
+    const data = await getCommentService(postId, userId);
+
+    res.status(200).json({
+      status: true,
+      data,
+    });
+  } catch (error) {
+    console.error(error); // <-- Add this
+
+    res.status(500).json({
+      status: false,
+      message: error.message,
+    });
+  }
+};
 
 export const editComment = async (req, res) => {
     try {
@@ -106,9 +109,9 @@ export const deleteComment = async (req, res) => {
 export const likeComment = async (req, res) => {
     try {
         const { commentId, userId } = req.params;
-
+         
         const existingLike = await Like.findOne({ commentId, userId });
-
+        
         if (existingLike) {
             await Like.deleteOne({ _id: existingLike._id });
 
