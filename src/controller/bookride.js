@@ -15,9 +15,9 @@ const requestRide = async (req, res) => {
   try {
     const { rideId } = req.params;
     const data = req.body;
-    
+
+    console.log(data, 'seat data request')
     const ride = await Ride.findById(rideId);
-    console.log(ride,'ride ride')
     if (!ride) {
       return res.status(404).json({ success: false, message: "Ride not found" });
     }
@@ -29,34 +29,47 @@ const requestRide = async (req, res) => {
       });
     }
 
-    const existingRequest = await Bookride.findOne({
+    const userRequests = await Bookride.find({
       rideId,
       requestedBy: data.requestedBy,
       status: "PENDING",
     });
 
-    if (existingRequest) {
-      return res.status(400).json({
-        success: false,
-        message: "You already requested this ride",
-      });
-    }
+    const alreadyRequestedSeats = userRequests.reduce(
+      (total, req) => total + Number(req.seatsRequested || 0),
+      0
+    );
 
     const isFlight = ride.modeOfTravel === "Flight";
 
-    if (!isFlight && Number(data.seatsRequested) > Number(ride.availableSeats)) {
-      return res.status(400).json({
-        success: false,
-        message: `Only ${ride.availableSeats} seat(s) available`,
-      });
+    if (!isFlight && userRequests?.status !== "PENDING") {
+      const remainingSeats = Number(ride.availableSeats) - alreadyRequestedSeats;
+
+      if (remainingSeats <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "You have already requested all available seats.",
+        });
+      }
+
+      if (Number(data.seatsRequested) > remainingSeats) {
+        return res.status(400).json({
+          success: false,
+          message: `You can request only ${remainingSeats} more seat(s).`,
+        });
+      }
     }
 
     const bookingData = await Bookride.create({
       ...data,
       rideId,
+      pendingReqSeats: data.seatsRequested,
       rideOwner: ride.createdBy,
       requestedBy: data.requestedBy,
     });
+
+    const populatedBooking = await Bookride.findById(bookingData._id)
+      .populate("requestedBy", "firstName lastName profileImage email");
 
     const actorName = data.firstName;
 
@@ -65,9 +78,7 @@ const requestRide = async (req, res) => {
       actorName,
     });
 
-
-
-    await createNotificationService({
+    const notifictioncreated = await createNotificationService({
       userId: ride.createdBy,
       actorId: data.requestedBy,
       type: "new_request",
@@ -83,8 +94,13 @@ const requestRide = async (req, res) => {
     emitNotification(ride.createdBy.toString(), {
       type: "new_request",
       message: notif.message,
+      category: notif.title,
       data: {
+        bookingData,
+        _id: notifictioncreated._id,
         rideId,
+        profileImage: populatedBooking?.requestedBy?.profileImage,
+        requestBy: populatedBooking,
         requestId: bookingData._id,
       },
     });
@@ -98,7 +114,6 @@ const requestRide = async (req, res) => {
     });
 
   } catch (error) {
-    console.log("requestRide error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -164,6 +179,8 @@ const statusBookride = async (req, res) => {
     // 🔹 Your existing logic (this already reduces seat 👍)
     const rides = await statusBookRide(requestId, statusType);
 
+    console.log(rides,'rides createde')
+
     if (!rides) {
       return res.status(404).json({
         success: false,
@@ -173,6 +190,8 @@ const statusBookride = async (req, res) => {
 
     if (statusType === "Approve") {
       const ride = await Ride.findById(rides.rideId);
+
+      console.log(ride, 'rideride')
 
       if (ride && ride.availableSeats === 0) {
         const pendingRequests = await Bookride.find({
@@ -216,10 +235,9 @@ const statusBookride = async (req, res) => {
       }
     }
 
-    // 🔔 Notification for current request
     const notif = buildNotification({ type: notifType });
 
-    await createNotificationService({
+    const notifictioncreated = await createNotificationService({
       userId: rides.requestedBy,
       actorId: rides.rideOwner,
       type: notifType,
@@ -233,7 +251,10 @@ const statusBookride = async (req, res) => {
     emitNotification(rides.requestedBy.toString(), {
       type: notifType,
       message: notif.message,
+      category: notif.title,
       data: {
+        _id: notifictioncreated._id,
+        // profileImage: populatedBooking?.requestedBy?.profileImage,
         rideId: rides.rideId,
         requestId: rides._id,
       },
@@ -249,22 +270,24 @@ const statusBookride = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("statusBookride error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update ride request",
+      message: error.message,
     });
   }
 };
 
 const editBookride = async (req, res) => {
   try {
-    const rides = await editBookRideService();
+    const { id } = req.params;
+    const updates = req.body;
+
+    console.log(updates, 'updaatesss')
+    const updatedRide = await editBookRideService(id, updates);
 
     res.status(200).json({
       success: true,
-      totalRides: rides.length,
-      data: rides,
+      data: updatedRide,
     });
   } catch (error) {
     res.status(500).json({
@@ -275,10 +298,11 @@ const editBookride = async (req, res) => {
 };
 
 const deleteBookride = async (req, res) => {
-  try {
-    const { userId } = req.params;
 
-    const ride = await deleteBookRideService(userId);
+  try {
+    const { requestId } = req.params;
+
+    const ride = await deleteBookRideService(requestId);
     if (!ride) {
       return res.status(404).json({
         success: false,

@@ -13,6 +13,7 @@ const memberSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
+ 
   },
   { _id: false }
 );
@@ -39,11 +40,26 @@ const bookRideSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-
+     phone: {
+        type: String,
+        required: true,
+    },
     seatsRequested: {
       type: Number,
       default: 1,
       min: 1,
+    },
+
+    approvedSeats: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+
+    pendingReqSeats: {
+      type: Number,
+      default: 0,
+      min: 0
     },
 
     membersCount: {
@@ -51,16 +67,15 @@ const bookRideSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
-
+    // Approved Members
     members: {
       type: [memberSchema],
       default: [],
     },
-
-    phone: {
-      type: String,
-      required: true,
-      trim: true,
+    //Pending Members
+    pendingMembers: {
+      type: [memberSchema],
+      default: [],
     },
 
     message: {
@@ -91,10 +106,10 @@ const bookRideSchema = new mongoose.Schema(
 );
 
 // One user can request one ride only once
-bookRideSchema.index(
-  { rideId: 1, requestedBy: 1 },
-  { unique: true }
-);
+// bookRideSchema.index(
+//   { rideId: 1, requestedBy: 1 },
+//   { unique: true }
+// );
 
 const BookRide = mongoose.model("BookRide", bookRideSchema);
 

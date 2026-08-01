@@ -35,6 +35,7 @@ export const updateNotificationStatus = async (req, res) => {
             isRead: true
         }
         const updateNotification = await updateNotificationStatusService(id, data);
+
         res.status(200).json({
             success: true,
             data: updateNotification

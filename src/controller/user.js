@@ -3,8 +3,10 @@ import {
   getAllUsers,
   loggedinUser,
   getUserById,
+  getTopRidersService,
   updateProfileService,
 } from '../service/user.js'
+
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import User from '../model/user.js'
@@ -12,6 +14,7 @@ import cloudinary from '../../config/cloudinary.js';
 import streamifier from 'streamifier'
 import { buildNotification, createNotificationService } from '../service/notification.js';
 import { emitNotification } from '../../socket.js';
+import { sendWelcomePendingEmail } from '../../config/sendMail.js';
 
 // Token Generation
 export const generateToken = (user) => {
@@ -79,10 +82,11 @@ export const createUser = async (req, res) => {
         actorName,
       });
 
-      await createNotificationService({
+      const notification = await createNotificationService({
         userId: referredBy,
         actorId: user._id,
         type: "referral_pending",
+        category: "New Referral",
         ...notif,
         data: {
           userId: user._id,
@@ -92,12 +96,25 @@ export const createUser = async (req, res) => {
       emitNotification(referredBy.toString(), {
         type: "referral_pending",
         message: notif.message,
+        category: "New Referral",
         data: {
+          _id: notification._id,
           userId: user._id,
           user: user,
         },
       });
     }
+
+    console.log('User Register mail progresss')
+
+    //sendmail
+    sendWelcomePendingEmail(
+      email,
+      firstName + " " + lastName,
+    )
+
+    console.log('User Register mail crossed')
+
 
     res.status(201).json({
       success: true,
@@ -231,20 +248,104 @@ const uploadToCloudinary = (buffer) => {
 };
 
 
+export const changePassword = async (req, res) => {
+
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+    const { userId } = req.params
+
+    // Validation
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required.",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password and confirm password do not match.",
+      });
+    }
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be different from current password.",
+      });
+    }
+
+    // Find user
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    // Compare current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password is incorrect.",
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    user.password = hashedPassword;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Password updated successfully.",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+    });
+  }
+};
+
 export const updateProfile = async (req, res) => {
   try {
     const { userId } = req.params;
+    const user = await User.findById(userId);
+
 
     let imageUrl = "";
-
-    if (req.file) {
-      const result = await uploadToCloudinary(req.file.buffer);
-      imageUrl = result.secure_url;
-    }
 
     const databody = {
       ...req.body,
     };
+
+    if (req.file) {
+      if (user?.imagePublicId) {
+        await cloudinary.uploader.destroy(user.imagePublicId);
+      }
+
+      const result = await uploadToCloudinary(req.file.buffer);
+      imageUrl = result.secure_url;
+      databody.imagePublicId = result.public_id;
+    }
+
+    const { mobile } = req.body;
+    if (mobile) {
+      const existingUser = await User.findOne({ mobile });
+
+      if (existingUser && existingUser._id.toString() !== userId) {
+        return res.status(400).json({
+          message: "Mobile number already exists",
+        });
+      }
+    }
 
     if (imageUrl) {
       databody.profileImage = imageUrl;
@@ -256,6 +357,26 @@ export const updateProfile = async (req, res) => {
       success: true,
       message: "Profile updated",
       data,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// controller/user.js
+
+
+export const getTopRiders = async (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 5;
+
+    const riders = await getTopRidersService(limit);
+    res.status(200).json({
+      success: true,
+      data: riders,
     });
   } catch (error) {
     res.status(500).json({

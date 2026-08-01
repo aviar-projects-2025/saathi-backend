@@ -7,7 +7,6 @@ const router = express.Router();
 router.post("/:postId/:userId", likePost);
 router.get("/liked-posts/:userId", getLikedPost)
 router.delete("/:postId/:userId", unlikePost);
-
 router.post("/comment/:commentId/:userId", likeComment);
 
 export default router;

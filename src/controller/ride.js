@@ -1,42 +1,59 @@
+import { broadcastNotification, emitNotification } from '../../socket.js';
+import BookRide from '../model/bookride.js';
+import { buildNotification, createNotificationService } from '../service/notification.js';
 import {
     createRideService,
     deleteRideService,
     getAllRideService,
     updateRideService,
 } from '../service/ride.js'
+import Ride from "../model/ride.js";
+import User from "../model/user.js";
+
 
 // controller
 export const createRide = async (req, res) => {
-  try {
-    const ride = await createRideService(req.body);
+    try {
+        const ride = await createRideService(req.body);
 
-    res.status(201).json({
-      success: true,
-      data: ride,
-    });
-  } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-  }
+        if (ride) {
+            const newRideUpdate = buildNotification({ type: "new_ride_added" });
+
+            broadcastNotification({
+                type: "new_ride_added",
+                message: newRideUpdate.message,
+                data: ride,
+            });
+        }
+
+        res.status(201).json({
+            success: true,
+            data: ride,
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: error.message,
+        });
+    }
 };
+
 export const checkActiveRide = async (req, res) => {
-  try {
-    const { userId } = req.params;
+    try {
+        const { userId } = req.params;
 
-    const hasActiveRide = await checkActiveRideService(userId);
+        const hasActiveRide = await checkActiveRideService(userId);
 
-    res.status(200).json({
-      success: true,
-      hasActiveRide,
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
+        res.status(200).json({
+            success: true,
+            hasActiveRide,
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: err.message,
+        });
+    }
 };
 
 export const getRides = async (req, res) => {
@@ -55,25 +72,56 @@ export const getRides = async (req, res) => {
     }
 }
 // Update
+
 export const editRide = async (req, res) => {
     try {
-        const { id } = req.params
-        const data = req.body
+        const { id } = req.params;
+        const data = req.body;
 
         const updatedRide = await updateRideService(id, data);
-        console.log(updatedRide, 'updateRide')
-        res.status(200).json({
-            status: true,
-            data: updatedRide
-        })
+
+        if (!updatedRide) {
+            return res.status(404).json({
+                success: false,
+                message: "Ride not found",
+            });
+        }
+
+        const bookedRide = await BookRide.find({
+            status: "ACCEPTED",
+            rideId: updatedRide._id,
+        });
+
+        for (const booking of bookedRide) {
+            emitNotification(booking.requestedBy, {
+                type: "ride_status",
+                message: `Your ride ${updatedRide.travelStatus} 🚀`,
+                ride: {
+                    _id: updatedRide._id,
+                    from: updatedRide.from,
+                    destination: updatedRide.destination,
+                    startTime: updatedRide.startTime,
+                    modeOfTravel: updatedRide.modeOfTravel,
+                },
+                data: {
+                    rideId: updatedRide._id,
+                    status: updatedRide.travelStatus,
+                },
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: updatedRide,
+        });
 
     } catch (error) {
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
-            message: error.message
-        })
+            message: error.message,
+        });
     }
-}
+};
 
 // Delete
 export const deleteRide = async (req, res) => {
@@ -94,7 +142,6 @@ export const deleteRide = async (req, res) => {
     }
 }
 
-//Get All Rides 
 export const getUserRides = async (req, res) => {
     const { id } = req.params;
     try {
@@ -110,3 +157,89 @@ export const getUserRides = async (req, res) => {
         })
     }
 }
+
+export const cancelRide = async (req, res) => {
+    try {
+        const { id } = req.params
+
+        const updatedRide = await Ride.findByIdAndUpdate(
+            id,
+            { travelStatus: 'Cancelled' },
+            { new: true }
+        )
+
+        console.log(updatedRide, 'Ride')
+
+        const ReqLists = await BookRide.find({
+            status: 'ACCEPTED',
+            rideId: id
+        });
+
+        for (const Req of ReqLists) {
+
+            const notifictioncreated = await createNotificationService({
+                userId: Req.requestedBy,
+                actorId: updatedRide.createdBy,
+                type: "request_cancelled",
+                message: `Your ride cancelled`,
+                data: {
+                    _id: notifictioncreated._id,
+                    rideId: updatedRide._id,
+                    status: updatedRide.travelStatus,
+                    requestId: Req._id,
+                    from: updatedRide.from,
+                    destination: updatedRide.destination,
+                },
+            });
+
+            console.log(notifictioncreated, 'notifictioncreated')
+
+            emitNotification(Req.requestedBy, {
+                type: "ride_cancelled",
+                message: `Your ride cancelled`,
+                category: 'Ride Cancelled',
+                ride: {
+                    _id: updatedRide._id,
+                    from: updatedRide.from,
+                    destination: updatedRide.destination,
+                    startTime: updatedRide.startTime,
+                    modeOfTravel: updatedRide.modeOfTravel,
+                },
+                data: {
+                    _id: notifictioncreated._id,
+                    rideId: updatedRide._id,
+                    status: updatedRide.travelStatus,
+                },
+            })
+
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Ride Cancelled'
+        })
+
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        })
+    }
+}
+
+
+// export const getTopRider = async (req, res) => {
+//   try {
+//     const rider = await getTopRider();
+//     res.status(200).json({
+//       success: true,
+//       data: rider,
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };

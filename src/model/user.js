@@ -56,7 +56,21 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ["Approved", "Waiting", 'Declined'],
         default: "Waiting",
+    },
+    completedRideCount: {
+        type: Number,
+        default: 0,
+    },
+    imagePublicId: {
+        type: String,
     }
+    // city: {
+    //   type: String,
+    // },
+    // isVerified: {
+    //   type: Boolean,
+    //   default: false,
+    // },
 }, {
     timestamps: true
 })

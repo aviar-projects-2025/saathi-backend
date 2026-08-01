@@ -7,7 +7,7 @@ const communitySchema = new mongoose.Schema({
 
     description: {
         type: String,
-        required: true,
+        // required: "",
     },
 
     authorId: {
@@ -18,6 +18,9 @@ const communitySchema = new mongoose.Schema({
     likes: {
         type: Number,
         default: 0,
+    },
+    communityImgPublicId : {
+        type : String,
     },
     comments: [
         {

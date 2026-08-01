@@ -27,7 +27,7 @@ export const buildNotification = ({ type, actorName }) => {
 
         case "request_accepted":
             return {
-                title: "Request Accepted",
+                title: "Ride Request Accepted",
                 message: `Your ride request was accepted`,
             };
 
@@ -46,6 +46,12 @@ export const buildNotification = ({ type, actorName }) => {
         case "ride_update":
             return {
                 title: "Ride Updated",
+                message: `Ride details have been updated`,
+            };
+
+        case "new_ride_added":
+            return {
+                title: "New Rides",
                 message: `Ride details have been updated`,
             };
 

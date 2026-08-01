@@ -40,12 +40,19 @@ const rideSchema = new mongoose.Schema(
       },
       default: 1,
     },
-
+     totalSeats:{
+      type: Number,
+         required: function () {
+        return this.modeOfTravel !== "Flight";
+      },
+     },
     fuelSharing: {
-      type: Boolean,
-      default: false,
+      type: Number,
+   
     },
-
+    duration:{
+      type: Number,
+    },
     // Flight fields
     fromCountry: {
       type: String,
@@ -89,10 +96,10 @@ const rideSchema = new mongoose.Schema(
       },
     },
 
-    transitAirport: {
-      type: String,
-      default: "",
-    },
+    // transitAirport: {
+    //   type: String,
+    //   default: "",
+    // },
 
     travellerType: {
       type: String,
@@ -110,12 +117,23 @@ const rideSchema = new mongoose.Schema(
     },
 
     language: {
-      type: String,
+      type: [String],
       required: function () {
         return this.modeOfTravel === "Flight";
       },
+      validate: {
+        validator: function (value) {
+          if (this.modeOfTravel === "Flight") {
+            return value && value.length > 0;
+          }
+          return true;
+        },
+        message: "Select at least one language",
+      },
     },
-
+  //  totalSeats:{
+  //     type: Number,
+  //  },
     ageGroupPreference: {
       type: String,
       enum: ["18-25", "26-40", "41-60", "60+", "Any"],
@@ -154,7 +172,7 @@ const rideSchema = new mongoose.Schema(
 
     travelStatus: {
       type: String,
-      enum: ['Waiting','Started', 'Ongoing', 'Completed', 'Cancelled'],
+      enum: ['Waiting', 'Started', 'Ongoing', 'Completed', 'Cancelled'],
       default: "Waiting",
     },
 

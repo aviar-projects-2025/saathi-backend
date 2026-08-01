@@ -27,17 +27,20 @@ export const editPost = async (req, res) => {
         const { userId, description } = req.body;
 
         let imageUrl = "";
+        let communityImgPublicId = "";
 
         if (req.file) {
             const result = await uploadToCloudinary(req.file.buffer);
             imageUrl = result.secure_url;
+            communityImgPublicId = result.public_id;
         }
 
         const post = await editPostService(
             postId,
             userId,
             description,
-            imageUrl
+            imageUrl,
+            communityImgPublicId 
         );
 
         return res.status(200).json({
@@ -75,15 +78,19 @@ export const createPost = async (req, res) => {
     try {
 
         let imageUrl = "";
+        let communityImgPublicId = "";
+
 
         if (req.file) {
             const result = await uploadToCloudinary(req.file.buffer);
             imageUrl = result.secure_url;
+            communityImgPublicId = result.public_id;
         }
 
         const data = {
             ...req.body,
             postImage: imageUrl,
+            communityImgPublicId,
         };
 
         const post = await createPostService(data);
