@@ -16,10 +16,8 @@ const testEmailConnection = async () => {
     try {
         const transporter = createTransporter();
         await transporter.verify();
-        console.log('✅ Email service connected successfully!');
         return true;
     } catch (error) {
-        console.error('Email connection failed:', error.message);
         return false;
     }
 };
@@ -71,10 +69,7 @@ const sendOTPEmail = async (email, otp, purpose = 'password reset') => {
             `
         };
 
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`OTP email sent to ${email}`);
-        console.log(`Message ID: ${info.messageId}`);
-        
+        const info = await transporter.sendMail(mailOptions);        
         return {
             success: true,
             messageId: info.messageId,
@@ -82,11 +77,8 @@ const sendOTPEmail = async (email, otp, purpose = 'password reset') => {
         };
 
     } catch (error) {
-        console.error('Email sending failed:', error.message);
         
-        // In development, log the OTP
         if (process.env.NODE_ENV === 'development') {
-            console.log(`📝 [DEV] OTP for ${email}: ${otp}`);
             return {
                 success: true,
                 devMode: true,
@@ -124,11 +116,9 @@ const sendWelcomeEmail = async (email, firstName) => {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log(`Welcome email sent to ${email}`);
         return true;
 
     } catch (error) {
-        console.error('Welcome email failed:', error.message);
         return false;
     }
 };
@@ -158,11 +148,9 @@ const sendPasswordResetConfirmation = async (email, firstName) => {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log(`Password reset confirmation sent to ${email}`);
         return true;
 
     } catch (error) {
-        console.error('Password reset confirmation failed:', error.message);
         return false;
     }
 };

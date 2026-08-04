@@ -99,7 +99,6 @@ const register = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Registration error:', error);
         res.status(500).json({
             success: false,
             message: error.message
@@ -153,7 +152,6 @@ const login = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Login error:', error);
         res.status(500).json({
             success: false,
             message: error.message
@@ -196,7 +194,6 @@ const forgotPassword = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Forgot password error:', error);
         res.status(500).json({
             success: false,
             message: error.message
@@ -204,9 +201,6 @@ const forgotPassword = async (req, res) => {
     }
 };
 
-// ============================================
-// VERIFY OTP
-// ============================================
 const verifyOTP = async (req, res) => {
     try {
         const { email, otp } = req.body;
@@ -241,7 +235,6 @@ const verifyOTP = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Verify OTP error:', error);
         res.status(500).json({
             success: false,
             message: error.message
@@ -249,9 +242,6 @@ const verifyOTP = async (req, res) => {
     }
 };
 
-// ============================================
-// RESET PASSWORD
-// ============================================
 const resetPassword = async (req, res) => {
     try {
         const { email, token, newPassword } = req.body;
@@ -295,7 +285,6 @@ const resetPassword = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Reset password error:', error);
         res.status(500).json({
             success: false,
             message: error.message
@@ -336,7 +325,6 @@ const resendOTP = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Resend OTP error:', error);
         res.status(500).json({
             success: false,
             message: error.message
