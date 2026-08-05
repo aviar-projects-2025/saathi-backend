@@ -1,6 +1,7 @@
 import express from 'express'
-import { createUser, getUsers, loginUser, getSingleUser, updateProfile, changePassword, getTopRiders } from '../controller/user.js'
+import { createUser, getUsers, loginUser, getSingleUser, updateProfile, changePassword, getTopRiders, getMe } from '../controller/user.js'
 import multer from 'multer';
+import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -18,6 +19,8 @@ router.post("/login", loginUser);
 router.post('/update/:userId', upload.single("profileImage"), updateProfile)
 
 // ✅ dynamic route LAST
+
+router.get("/me", verifyToken, getMe);
 router.get("/:id", getSingleUser);
 
 export default router;
