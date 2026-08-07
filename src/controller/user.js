@@ -57,6 +57,17 @@ export const createUser = async (req, res) => {
       referredBy = referredUser._id;
     }
 
+    if (email) {
+      const emailUser = await User.findOne({ email });
+
+      if (emailUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Email already exist!",
+        });
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const myReferralCode =
@@ -105,7 +116,6 @@ export const createUser = async (req, res) => {
       });
     }
 
-    console.log('User Register mail progresss')
 
     //sendmail
     sendWelcomePendingEmail(
@@ -113,7 +123,6 @@ export const createUser = async (req, res) => {
       firstName + " " + lastName,
     )
 
-    console.log('User Register mail crossed')
 
 
     res.status(201).json({
