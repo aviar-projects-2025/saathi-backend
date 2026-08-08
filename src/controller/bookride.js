@@ -16,7 +16,6 @@ const requestRide = async (req, res) => {
     const { rideId } = req.params;
     const data = req.body;
 
-    console.log(data, 'seat data request')
     const ride = await Ride.findById(rideId);
     if (!ride) {
       return res.status(404).json({ success: false, message: "Ride not found" });
@@ -179,7 +178,6 @@ const statusBookride = async (req, res) => {
     // 🔹 Your existing logic (this already reduces seat 👍)
     const rides = await statusBookRide(requestId, statusType);
 
-    console.log(rides,'rides createde')
 
     if (!rides) {
       return res.status(404).json({
@@ -191,7 +189,6 @@ const statusBookride = async (req, res) => {
     if (statusType === "Approve") {
       const ride = await Ride.findById(rides.rideId);
 
-      console.log(ride, 'rideride')
 
       if (ride && ride.availableSeats === 0) {
         const pendingRequests = await Bookride.find({
@@ -282,7 +279,6 @@ const editBookride = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
-    console.log(updates, 'updaatesss')
     const updatedRide = await editBookRideService(id, updates);
 
     res.status(200).json({
