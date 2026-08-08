@@ -1,14 +1,25 @@
 import nodemailer from 'nodemailer';
+// const createTransporter = () => {
+//     return nodemailer.createTransport({
+//         service: 'gmail',
+//         auth: {
+//             user: process.env.EMAIL_USER || 'your-email@gmail.com',
+//             pass: process.env.EMAIL_PASS || 'your-app-password'
+//         },
+//         tls: {
+//             rejectUnauthorized: false
+//         }
+//     });
+// };
 const createTransporter = () => {
     return nodemailer.createTransport({
-        service: 'gmail',
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
         auth: {
-            user: process.env.EMAIL_USER || 'your-email@gmail.com',
-            pass: process.env.EMAIL_PASS || 'your-app-password'
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
         },
-        tls: {
-            rejectUnauthorized: false
-        }
     });
 };
 
@@ -69,7 +80,7 @@ const sendOTPEmail = async (email, otp, purpose = 'password reset') => {
             `
         };
 
-        const info = await transporter.sendMail(mailOptions);        
+        const info = await transporter.sendMail(mailOptions);
         return {
             success: true,
             messageId: info.messageId,
@@ -77,7 +88,7 @@ const sendOTPEmail = async (email, otp, purpose = 'password reset') => {
         };
 
     } catch (error) {
-        
+
         if (process.env.NODE_ENV === 'development') {
             return {
                 success: true,
@@ -86,7 +97,7 @@ const sendOTPEmail = async (email, otp, purpose = 'password reset') => {
                 message: 'OTP logged for development'
             };
         }
-        
+
         throw new Error(`Failed to send email: ${error.message}`);
     }
 };
