@@ -25,7 +25,7 @@ export const getTopRidersService = async (limit) => {
   return await User.find({ completedRideCount: { $gt: 0 } })
     .sort({ completedRideCount: -1 })
     .limit(limit)
-    .select("firstName lastName city completedRideCount isVerified");
+    .select("firstName lastName city completedRideCount  profileImage isVerified");
 };
 
 export const updateProfileService = async (userId, data) => {

@@ -6,7 +6,7 @@ import {
     sendPasswordResetConfirmation 
 } from '../service/emailService.js';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 
 const generateOTP = () => {
