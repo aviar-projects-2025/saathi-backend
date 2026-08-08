@@ -16,7 +16,7 @@ export const createRideService = async (data) => {
 
 // Get all
 export const getAllRideService = async () => {
-  return await Ride.find().populate("createdBy", "firstName lastName").sort({ createdAt: -1 });
+  return await Ride.find().populate("createdBy", "firstName lastName profileImage").sort({ createdAt: -1 });
 };
 
 // Get single Ride
