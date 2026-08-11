@@ -38,7 +38,7 @@ const rideSchema = new mongoose.Schema(
       required: function () {
         return this.modeOfTravel !== "Flight";
       },
-      default: 1,
+  
     },
      totalSeats:{
       type: Number,
