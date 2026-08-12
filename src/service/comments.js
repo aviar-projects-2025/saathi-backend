@@ -91,6 +91,8 @@ export const deleteCommentService = async (commentId, userId) => {
   }
 
   await Comment.findByIdAndDelete(commentId);
-
+  await Comment.deleteMany({
+    parentCommentId: commentId,
+});
   return comment;
 };
