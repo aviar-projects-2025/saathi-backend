@@ -27,6 +27,9 @@ const userSchema = new mongoose.Schema({
     bio: {
         type: String,
     },
+    zipcode: {
+         type: String,
+    },
     dob: {
         type: String,
         // required: true,
