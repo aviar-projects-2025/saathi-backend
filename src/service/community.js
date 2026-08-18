@@ -31,7 +31,7 @@ export const deletePostService = async (postId, userId) => {
   };
 };
 export const getPostsService = async () => {
-  return await Community.find().populate("authorId", "firstName lastName referralCode profileImage bio").sort({ createdAt: -1 });;
+  return await Community.find().populate("authorId", "firstName lastName referralCode profileImage bio zipcode").sort({ createdAt: -1 });;
 }
 export const editPostService = async (
   postId,

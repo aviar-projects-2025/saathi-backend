@@ -4,7 +4,7 @@ import User from "../model/user.js";
 
 export const createRideService = async (data) => {
   const startDate = new Date(data.startTime);
-  
+
   const startOfDay = new Date(startDate);
   startOfDay.setHours(0, 0, 0, 0);
 
@@ -16,7 +16,7 @@ export const createRideService = async (data) => {
 
 // Get all
 export const getAllRideService = async () => {
-  return await Ride.find().populate("createdBy", "firstName lastName profileImage").sort({ createdAt: -1 });
+  return await Ride.find().populate("createdBy", "firstName lastName profileImage zipcode").sort({ createdAt: -1 });
 };
 
 // Get single Ride
