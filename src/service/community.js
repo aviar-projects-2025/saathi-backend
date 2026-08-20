@@ -30,9 +30,44 @@ export const deletePostService = async (postId, userId) => {
     message: "Post deleted successfully",
   };
 };
-export const getPostsService = async () => {
-  return await Community.find().populate("authorId", "firstName lastName referralCode profileImage bio zipcode").sort({ createdAt: -1 });;
-}
+// export const getPostsService = async () => {
+//   return await Community.find()
+//   .populate("authorId", "firstName lastName referralCode profileImage bio zipcode")
+//   .sort({ createdAt: -1 });;
+// }
+
+export const getPostsService = async (page = 1, limit = 10) => {
+  const skip = (page - 1) * limit;
+
+  const posts = await Community.find()
+    .populate(
+      "authorId",
+      "firstName lastName referralCode profileImage bio zipcode"
+    )
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  const total = await Community.countDocuments();
+
+  const formattedPosts = posts.map((post) => ({
+    ...post,
+    commentCount: post.comments?.length || 0,
+  }));
+
+  return {
+    posts: formattedPosts,
+    pagination: {
+      page,
+      limit,
+      total,
+      hasMore: skip + posts.length < total,
+    },
+  };
+};
+
+
 export const editPostService = async (
   postId,
   userId,

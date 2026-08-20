@@ -143,8 +143,13 @@ const statusBookRide = async (requestId, type) => {
         pendingMembers = [];
       }
 
-    } else {
+    } else if(type === "Cancel") {
       // keep status correct
+      console.log(approvedSeats, ' else if version')
+      status = "Cancelled"
+      pendingReqSeats = 0;
+      pendingMembers = [];
+    } else {
       status = approvedSeats > 0 ? "ACCEPTED" : "REJECTED";
       pendingReqSeats = 0;
       pendingMembers = [];

@@ -2,6 +2,7 @@ import express from 'express'
 import { createUser, getUsers, loginUser, getSingleUser, updateProfile, changePassword, getTopRiders, getMe } from '../controller/user.js'
 import multer from 'multer';
 import { verifyToken } from '../middleware/auth.js';
+import { getUploadSignature } from '../../config/cloudinary.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -16,7 +17,11 @@ router.patch("/change-password/:userId", changePassword);
 
 //login route
 router.post("/login", loginUser);
-router.post('/update/:userId', upload.single("profileImage"), updateProfile)
+// router.post('/update/:userId', upload.single("profileImage"), updateProfile)
+router.post('/update/:userId', updateProfile)
+
+
+router.get("/upload-signature", getUploadSignature);
 
 // ✅ dynamic route LAST
 
