@@ -8,12 +8,17 @@ import { getReferralService, updateService, removeService } from '../service/ref
 export const getReferrals = async (req, res) => {
     try {
         const { id } = req.params
+
         const data = await getReferralService(id);
+
+        console.log(data,'data')
+
         res.status(200).json({
             status: true,
             data: data
         })
     } catch (error) {
+        console.log(error,"error")
         res.status(500).json({
             status: false,
             message: error.message

@@ -3,6 +3,7 @@ import streamifier from 'streamifier'
 import { createPostService, getPostsService, deletePostService, editPostService } from "../service/community.js";
 import { getLikedPostService, likePostService, unlikePostService } from "../service/likes.js";
 import Community from "../model/community.js";
+import supabase from "../../config/supabase.js";
 
 const uploadToCloudinary = (buffer) => {
     return new Promise((resolve, reject) => {
@@ -76,36 +77,61 @@ export const deletePost = async (req, res) => {
 
 export const createPost = async (req, res) => {
     try {
-
-        let imageUrl = "";
-        let communityImgPublicId = "";
-
+        let imageUrl = null;
+        let communityImgPublicId = null;
 
         if (req.file) {
             const result = await uploadToCloudinary(req.file.buffer);
+
             imageUrl = result.secure_url;
             communityImgPublicId = result.public_id;
         }
 
-        const data = {
-            ...req.body,
-            postImage: imageUrl,
-            communityImgPublicId,
-        };
+        const {
+            authorId,
+            description,
+        } = req.body;
 
-        const post = await createPostService(data);
-        res.status(201).json({
+        const { data: post, error } = await supabase
+            .from("community_posts")
+            .insert({
+                author_id: authorId,
+                description: description || null,
+                post_image: imageUrl,
+                community_img_public_id: communityImgPublicId,
+                likes: 0,
+            })
+            .select(`
+                id,
+                author_id,
+                description,
+                post_image,
+                community_img_public_id,
+                likes,
+                created_at,
+                updated_at
+            `)
+            .single();
+
+        if (error) {
+            throw error;
+        }
+
+        return res.status(201).json({
             success: true,
             data: post,
-            message: 'Posted Successfully'
-        })
+            message: "Posted Successfully",
+        });
+
     } catch (error) {
-        res.status(500).json({
+        console.error("Create post error:", error);
+
+        return res.status(500).json({
             success: false,
-            message: error.message
-        })
+            message: error.message,
+        });
     }
-}
+};
 
 export const getPosts = async (req, res) => {
   try {

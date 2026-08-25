@@ -3,6 +3,7 @@ import { createUser, getUsers, loginUser, getSingleUser, updateProfile, changePa
 import multer from 'multer';
 import { verifyToken } from '../middleware/auth.js';
 import { getUploadSignature } from '../../config/cloudinary.js';
+import { testSupabase } from '../../test.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -10,6 +11,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 // signup Route
 router.post("/", createUser);
 router.get("/", getUsers);
+router.get("/test-supabase", testSupabase);
 
 // ✅ specific routes BEFORE dynamic /:id
 router.get("/top-riders", getTopRiders);

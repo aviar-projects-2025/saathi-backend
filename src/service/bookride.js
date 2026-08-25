@@ -1,22 +1,50 @@
 import mongoose from "mongoose";
 import BookRide from "../model/bookride.js";
 import Ride from "../model/ride.js";
+import supabase from "../../config/supabase.js";
 
 const createBookRideService = async (data) => {
   return await BookRide.create(data)
 }
 
 const getSentRequestsService = async (userId) => {
-  return await BookRide.find({ requestedBy: userId })
-    .populate({
-      path: "rideId",
-      populate: {
-        path: "createdBy",
-        select: "firstName lastName email profileImage",
-      },
-    })
-    .populate("requestedBy", "firstName lastName email profileImage")
-    .sort({ createdAt: -1 });
+
+  const { data, error } = await supabase
+    .from("book_rides")
+    .select(`
+            id,
+            ride_id,
+            requested_by,
+            created_at,
+
+            rides:ride_id (
+                id,
+                created_by,
+                users:created_by (
+                    id,
+                    first_name,
+                    last_name,
+                    email,
+                    profile_image
+                )
+            ),
+
+            requested_user:requested_by (
+                id,
+                first_name,
+                last_name,
+                email,
+                profile_image
+            )
+        `)
+    .eq("requested_by", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 };
 
 /**
@@ -90,23 +118,96 @@ const editBookRideService = async (requestId, updates) => {
 const getBookRideService = async (userId, type) => {
 
   if (type === "requested") {
-    return await BookRide.find({
-      requestedBy: userId,
-    });
+
+    const { data, error } = await supabase
+      .from("book_rides")
+      .select(`
+                id,
+                ride_id,
+                requested_by,
+                ride_owner,
+                phone,
+                seats_requested,
+                approved_seats,
+                pending_req_seats,
+                members_count,
+                members,
+                pending_members,
+                message,
+                request_type,
+                status,
+                created_at,
+                updated_at
+            `)
+      .eq("requested_by", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
   }
 
   if (type === "received") {
-    return await BookRide.find({
-      rideOwner: userId,
-    })
-      .populate({
-        path: "rideId",
-        populate: {
-          path: "createdBy",
-          select: "firstName lastName email profileImage",
-        },
-      })
-      .populate('requestedBy', 'firstName lastName profileImage');
+
+    const { data, error } = await supabase
+      .from("book_rides")
+      .select(`
+                id,
+                ride_id,
+                requested_by,
+                ride_owner,
+                phone,
+                seats_requested,
+                approved_seats,
+                pending_req_seats,
+                members_count,
+                members,
+                pending_members,
+                message,
+                request_type,
+                status,
+                created_at,
+                updated_at,
+
+                rides:ride_id (
+                    id,
+                    created_by,
+                    mode_of_travel,
+                    from_location,
+                    destination,
+                    start_time,
+                    end_time,
+                    available_seats,
+                    total_seats,
+                    status,
+                    travel_status,
+
+                    creator:created_by (
+                        id,
+                        first_name,
+                        last_name,
+                        email,
+                        profile_image
+                    )
+                ),
+
+                requester:requested_by (
+                    id,
+                    first_name,
+                    last_name,
+                    profile_image
+                )
+            `)
+      .eq("ride_owner", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
   }
 
   return [];
@@ -143,7 +244,7 @@ const statusBookRide = async (requestId, type) => {
         pendingMembers = [];
       }
 
-    } else if(type === "Cancel") {
+    } else if (type === "Cancel") {
       // keep status correct
       console.log(approvedSeats, ' else if version')
       status = "Cancelled"

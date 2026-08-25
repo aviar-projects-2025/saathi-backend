@@ -1,3 +1,4 @@
+import supabase from "../../config/supabase.js";
 import SavedPost from "../model/communitySaved.js";
 
 
@@ -35,15 +36,40 @@ export const getPostById = async (req, res) => {
     try {
         const { userId } = req.params;
 
-        const savedPosts = await SavedPost.find({ userId }).populate("postId");
+        const { data, error } = await supabase
+            .from("saved_posts")
+            .select(`
+                id,
+                user_id,
+                post_id,
+                created_at,
+                community_posts (
+                    id,
+                    post_image,
+                    description,
+                    author_id,
+                    likes,
+                    community_img_public_id,
+                    created_at,
+                    updated_at
+                )
+            `)
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false });
 
-        res.status(200).json({
+        if (error) {
+            throw error;
+        }
+
+        return res.status(200).json({
             status: true,
-            savedPosts
+            savedPosts: data
         });
 
     } catch (error) {
-        res.status(500).json({
+        console.error("Get saved posts error:", error);
+
+        return res.status(500).json({
             status: false,
             message: error.message
         });

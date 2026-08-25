@@ -1,3 +1,4 @@
+import supabase from "../../config/supabase.js";
 import Notification from "../model/notification.js"
 
 // export const createNotificaitonService = async (data, type, title, message) => {
@@ -100,11 +101,25 @@ export const createNotificationService = async ({
 };
 
 export const getNotificationService = async (userId) => {
+    const { data, error } = await supabase
+        .from("notifications")
+        .select(`
+            *,
+            actor:users!notifications_actor_id_fkey (
+                id,
+                first_name,
+                last_name,
+                profile_image
+            )
+        `)
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
 
-    return await Notification
-        .find({ userId })
-        .populate('actorId', 'firstName lastName profileImage')
-        .sort({ createdAt: -1 });
+    if (error) {
+        throw error;
+    }
+
+    return data;
 };
 
 export const updateNotificationStatusService = async (id, data) => {

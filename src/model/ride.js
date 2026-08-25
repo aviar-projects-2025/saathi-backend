@@ -100,11 +100,6 @@ const rideSchema = new mongoose.Schema(
       },
     },
 
-    // transitAirport: {
-    //   type: String,
-    //   default: "",
-    // },
-
     travellerType: {
       type: String,
       enum: [

@@ -15,12 +15,13 @@ import streamifier from 'streamifier'
 import { buildNotification, createNotificationService } from '../service/notification.js';
 import { emitNotification } from '../../socket.js';
 import { sendWelcomePendingEmail } from '../../config/sendMail.js';
+import supabase from '../../config/supabase.js';
 
 // Token Generation
 export const generateToken = (user) => {
   return jwt.sign(
     {
-      id: user._id,
+      id: user.id,
       email: user.email,
       role: user.role
     },
@@ -142,6 +143,8 @@ export const getUsers = async (req, res) => {
   try {
     const users = await getAllUsers();
 
+    console.log(users, 'users')
+
     res.status(200).json({
       success: true,
       count: users.length,
@@ -161,6 +164,8 @@ export const getSingleUser = async (req, res) => {
   try {
 
     const { id } = req.params;
+
+    console.log(id, '===id===')
     const user = await getUserById(id);
 
     res.status(200).json({
@@ -176,12 +181,38 @@ export const getSingleUser = async (req, res) => {
 
 }
 
-// Login user
+
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
+    // Find user in Supabase
+    const { data: user, error } = await supabase
+      .from("users")
+      .select(`
+        id,
+        referral_code,
+        first_name,
+        last_name,
+        email,
+        password,
+        role,
+        ref_approve,
+        profile_image
+      `)
+      .eq("email", email)
+      .maybeSingle();
+
+    console.log(user, 'user')
+
+    if (error) {
+      console.error("Supabase login error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Something went wrong while logging in",
+      });
+    }
 
     if (!user) {
       return res.status(400).json({
@@ -190,7 +221,11 @@ export const loginUser = async (req, res) => {
       });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    // Compare password with stored bcrypt hash
+    const isMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
 
     if (!isMatch) {
       return res.status(400).json({
@@ -199,29 +234,33 @@ export const loginUser = async (req, res) => {
       });
     }
 
-    if (user.refApprove === "Waiting") {
+    // Account approval
+    if (user.ref_approve === "Waiting") {
       return res.status(403).json({
         success: false,
-        message: "Your account is not approved yet. Please wait for approval.",
+        message:
+          "Your account is not approved yet. Please wait for approval.",
       });
     }
 
-    if (user.refApprove === "Blocked") {
+    if (user.ref_approve === "Blocked") {
       return res.status(403).json({
         success: false,
-        message: "Your account is Blocked. Contact Admin admin@saathi.com",
+        message:
+          "Your account is Blocked. Contact Admin admin@saathi.com",
       });
     }
 
+    // Keep the same response structure as your old API
     const data = {
-      id: user._id,
-      referralCode: user.referralCode,
-      firstName: user.firstName,
-      lastName: user.lastName,
+      id: user.id,
+      referralCode: user.referral_code,
+      firstName: user.first_name,
+      lastName: user.last_name,
       email: user.email,
       role: user.role,
-      refApprove: user.refApprove,
-      profileImage: user.profileImage,
+      refApprove: user.ref_approve,
+      profileImage: user.profile_image,
     };
 
     return res.status(200).json({
@@ -232,6 +271,8 @@ export const loginUser = async (req, res) => {
     });
 
   } catch (error) {
+    console.error("Login error:", error);
+
     return res.status(500).json({
       success: false,
       message: error.message,
@@ -434,18 +475,59 @@ export const getTopRiders = async (req, res) => {
 // controller
 export const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password");
 
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User no longer exists",
-      });
+    console.log("REQ USER:", req.user);
+    console.log("REQ USER ID:", req.user?.id);
+
+
+    const { data: user, error } = await supabase
+      .from("users")
+      .select(`
+                id,
+                referral_code,
+                first_name,
+                last_name,
+                profile_image,
+                email,
+                gender,
+                mobile,
+                bio,
+                zipcode,
+                dob,
+                role,
+                ref_approve,
+                completed_ride_count,
+                image_public_id,
+                created_at,
+                updated_at
+            `)
+      .eq("id", req.user.id)
+      .single();
+
+    console.log("SUPABASE USER:", user);
+    console.log("SUPABASE ERROR:", error);
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return res.status(401).json({
+          success: false,
+          message: "User no longer exists",
+        });
+      }
+
+      throw error;
     }
 
-    res.status(200).json(user);
+    return res.status(200).json(
+      {
+        success : true,
+        user,
+      });
+
   } catch (error) {
-    res.status(500).json({
+    console.error("Get Me Error:", error);
+
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
