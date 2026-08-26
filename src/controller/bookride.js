@@ -163,7 +163,9 @@ const statusBookride = async (req, res) => {
     const { requestId } = req.params;
     const { type: statusType } = req.query;
 
-    if (!["Approve", "Reject"].includes(statusType)) {
+    console.log(statusType,'statusType')
+
+    if (!["Approve", "Reject", "Cancel"].includes(statusType)) {
       return res.status(400).json({
         success: false,
         message: "Invalid status type",
@@ -173,6 +175,8 @@ const statusBookride = async (req, res) => {
     const notifType =
       statusType === "Approve"
         ? "request_accepted"
+        : statusType === "Cancel"
+        ? "request_cancelled"
         : "request_rejected";
 
     // 🔹 Your existing logic (this already reduces seat 👍)

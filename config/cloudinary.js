@@ -8,23 +8,31 @@ cloudinary.config({
 
 export default cloudinary;
 
-
-
 export const getUploadSignature = async (req, res) => {
-    const timestamp = Math.round(Date.now() / 1000);
+    try {
+        const timestamp = Math.round(Date.now() / 1000);
 
-    const signature = cloudinary.utils.api_sign_request(
-        {
+        const signature = cloudinary.utils.api_sign_request(
+            {
+                timestamp,
+                folder: "saathi-posts",
+            },
+            process.env.CLOUDINARY_API_SECRET
+        );
+
+        res.json({
             timestamp,
-            folder: "saathi-posts",
-        },
-        process.env.CLOUDINARY_API_SECRET
-    );
+            signature,
+            cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+            apiKey: process.env.CLOUDINARY_API_KEY,
+            folder: "saathi-posts"
+        });
+    } catch (error) {
+        console.error("Cloudinary signature error:", error);
 
-    res.json({
-        timestamp,
-        signature,
-        cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-        apiKey: process.env.CLOUDINARY_API_KEY,
-    });
+        res.status(500).json({
+            success: false,
+            message: "Failed to generate upload signature",
+        });
+    }
 };

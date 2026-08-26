@@ -31,6 +31,10 @@ const rideSchema = new mongoose.Schema(
     endTime: {
       type: Date,
     },
+    lastRideStartedNotificationAt: {
+      type: Date,
+      default: null
+    },
 
     // Normal ride fields
     availableSeats: {
@@ -38,19 +42,19 @@ const rideSchema = new mongoose.Schema(
       required: function () {
         return this.modeOfTravel !== "Flight";
       },
-      default: 1,
+
     },
-     totalSeats:{
+    totalSeats: {
       type: Number,
-         required: function () {
+      required: function () {
         return this.modeOfTravel !== "Flight";
       },
-     },
+    },
     fuelSharing: {
       type: Number,
-   
+
     },
-    duration:{
+    duration: {
       type: Number,
     },
     // Flight fields
@@ -131,9 +135,9 @@ const rideSchema = new mongoose.Schema(
         message: "Select at least one language",
       },
     },
-  //  totalSeats:{
-  //     type: Number,
-  //  },
+    //  totalSeats:{
+    //     type: Number,
+    //  },
     ageGroupPreference: {
       type: String,
       enum: ["18-25", "26-40", "41-60", "60+", "Any"],

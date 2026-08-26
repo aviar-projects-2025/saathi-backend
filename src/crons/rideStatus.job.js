@@ -35,18 +35,48 @@ cron.schedule("* * * * *", async () => {
             });
         }
 
-        emitNotification(ride.createdBy, {
-            type: "ride_started",
-            message: "Looks like you have started your ride, confirm!",
-            ride: {
-                _id: ride._id,
-                from: ride.from,
-                destination: ride.destination,
-                startTime: ride.startTime,
-                modeOfTravel: ride.modeOfTravel,
-            },
-            data: { rideId: ride._id },
-        });
+        // emitNotification(ride.createdBy, {
+        //     type: "ride_started",
+        //     message: "Looks like you have started your ride, confirm!",
+        //     ride: {
+        //         _id: ride._id,
+        //         from: ride.from,
+        //         destination: ride.destination,
+        //         startTime: ride.startTime,
+        //         modeOfTravel: ride.modeOfTravel,
+        //     },
+        //     data: { rideId: ride._id },
+        // });
+
+        const now = new Date();
+
+
+        const shouldNotify =
+            !ride.lastRideStartedNotificationAt ||
+            (now - ride.lastRideStartedNotificationAt) >= 5 * 60 * 1000;
+
+        if (shouldNotify) {
+
+            emitNotification(ride.createdBy, {
+                type: "ride_started",
+                message: "Looks like you have started your ride, confirm!",
+                category: "Ride Started",
+                ride: {
+                    _id: ride._id,
+                    from: ride.from,
+                    destination: ride.destination,
+                    startTime: ride.startTime,
+                    modeOfTravel: ride.modeOfTravel,
+                },
+                data: {
+                    rideId: ride._id,
+                    _id: ride._id,
+                },
+            });
+
+            ride.lastRideStartedNotificationAt = now;
+            await ride.save();
+        }
 
     }
 
