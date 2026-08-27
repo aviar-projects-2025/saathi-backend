@@ -208,30 +208,153 @@ export const getRideById = async (id) => {
   return await Ride.findById(id);
 };
 
+
+
 export const deleteRideService = async (id) => {
-  return await Ride.findByIdAndDelete(id);
-}
-// service/ride.js
+  const { data: deletedRide, error } = await supabase
+    .from("rides")
+    .delete()
+    .eq("id", id)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return deletedRide;
+};
 
 export const updateRideService = async (id, data) => {
-  await BookRide.updateMany(
-    { rideId: id, status: "PENDING" },
-    { status: "AUTO_REJECTED" }
-  );
+  // 1. Auto-reject all pending bookings for this ride
+  const { error: bookingError } = await supabase
+    .from("book_rides")
+    .update({
+      status: "AUTO_REJECTED",
+    })
+    .eq("ride_id", id)
+    .eq("status", "PENDING");
 
-  const existingRide = await Ride.findById(id);
+  if (bookingError) {
+    throw bookingError;
+  }
 
-  const updatedRide = await Ride.findByIdAndUpdate(id, data, {
-    new: true,
+  // 2. Get existing ride
+  const { data: existingRide, error: existingRideError } = await supabase
+    .from("rides")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (existingRideError) {
+    throw existingRideError;
+  }
+
+  if (!existingRide) {
+    return null;
+  }
+
+  // 3. Convert frontend data to Supabase column names
+  const updateData = {
+    created_by: data.createdBy,
+
+    mode_of_travel: data.modeOfTravel,
+
+    from_location: data.from,
+    destination: data.destination,
+
+    start_time: data.startTime,
+    end_time: data.endTime,
+
+    last_ride_started_notification_at:
+      data.lastRideStartedNotificationAt,
+
+    available_seats: data.availableSeats,
+    total_seats: data.totalSeats,
+
+    fuel_sharing: data.fuelSharing,
+
+    duration: data.duration,
+
+    from_country: data.fromCountry,
+    from_airport: data.fromAirport,
+
+    to_country: data.toCountry,
+    to_airport: data.toAirport,
+
+    flight_number: data.flightNumber,
+    airline_name: data.airlineName,
+
+    traveller_type: data.travellerType,
+    language: data.language,
+
+    age_group_preference: data.ageGroupPreference,
+
+    medical_assistance: data.medicalAssistance,
+    language_support: data.languageSupport,
+
+    transit_help: data.transitHelp,
+    baggage_help: data.baggageHelp,
+
+    description: data.description,
+
+    status: data.status,
+
+    travel_status: data.travelStatus,
+
+    gender_preference: data.genderPreference,
+
+    updated_at: new Date().toISOString(),
+  };
+
+  // Remove undefined values
+  Object.keys(updateData).forEach((key) => {
+    if (updateData[key] === undefined) {
+      delete updateData[key];
+    }
   });
 
+  // 4. Update ride
+  const { data: updatedRide, error: updateError } = await supabase
+    .from("rides")
+    .update(updateData)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  // 5. Check if ride was changed to Completed
   if (
-    existingRide.travelStatus !== "Completed" &&
-    updatedRide.travelStatus === "Completed"
+    existingRide.travel_status !== "Completed" &&
+    updatedRide.travel_status === "Completed"
   ) {
-    await User.findByIdAndUpdate(updatedRide.createdBy, {
-      $inc: { completedRideCount: 1 },
-    });
+    // Get current completed ride count
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("completed_ride_count")
+      .eq("id", updatedRide.created_by)
+      .single();
+
+    if (userError) {
+      throw userError;
+    }
+
+    const currentCount = user.completed_ride_count || 0;
+
+    // Increment completed ride count
+    const { error: updateUserError } = await supabase
+      .from("users")
+      .update({
+        completed_ride_count: currentCount + 1,
+      })
+      .eq("id", updatedRide.created_by);
+
+    if (updateUserError) {
+      throw updateUserError;
+    }
   }
 
   return updatedRide;

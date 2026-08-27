@@ -364,11 +364,27 @@ export const changePassword = async (req, res) => {
   }
 };
 
+
+
 export const updateProfile = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const user = await User.findById(userId);
+    // 1. Get existing user
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("id, image_public_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (userError) {
+      console.error("Get user error:", userError);
+
+      return res.status(500).json({
+        success: false,
+        message: userError.message,
+      });
+    }
 
     if (!user) {
       return res.status(404).json({
@@ -383,16 +399,27 @@ export const updateProfile = async (req, res) => {
 
     console.log(databody, "databody");
 
-    // Check mobile number
+    // 2. Check mobile number
     const { mobile } = req.body;
 
     if (mobile) {
-      const existingUser = await User.findOne({ mobile });
+      const { data: existingUser, error: mobileError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("mobile", mobile)
+        .neq("id", userId)
+        .maybeSingle();
 
-      if (
-        existingUser &&
-        existingUser._id.toString() !== userId
-      ) {
+      if (mobileError) {
+        console.error("Mobile check error:", mobileError);
+
+        return res.status(500).json({
+          success: false,
+          message: mobileError.message,
+        });
+      }
+
+      if (existingUser) {
         return res.status(400).json({
           success: false,
           message: "Mobile number already exists",
@@ -400,17 +427,16 @@ export const updateProfile = async (req, res) => {
       }
     }
 
-    // Store old Cloudinary public ID
-    const oldImagePublicId = user.imagePublicId;
+    // 3. Store old Cloudinary public ID
+    const oldImagePublicId = user.image_public_id;
 
-    // Update database
+    // 4. Update database
     const data = await updateProfileService(
       userId,
       databody
     );
 
-    // If a new profile image was uploaded,
-    // delete the old image from Cloudinary
+    // 5. Delete old Cloudinary image if new image was uploaded
     if (
       req.body.profileImage &&
       req.body.imagePublicId &&
@@ -437,6 +463,7 @@ export const updateProfile = async (req, res) => {
       }
     }
 
+    // 6. Response
     return res.status(200).json({
       success: true,
       message: "Profile updated",
@@ -452,7 +479,6 @@ export const updateProfile = async (req, res) => {
     });
   }
 };
-
 
 export const getTopRiders = async (req, res) => {
   try {

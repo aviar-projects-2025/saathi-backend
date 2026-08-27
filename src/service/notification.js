@@ -82,22 +82,39 @@ export const buildNotification = ({ type, actorName }) => {
     }
 };
 
+
+
 export const createNotificationService = async ({
-    userId,
-    actorId,
+  userId,
+  actorId,
+  type,
+  title,
+  message,
+  data = {},
+}) => {
+  const notificationData = {
+    user_id: userId,
+    actor_id: actorId,
     type,
     title,
     message,
-    data = {},
-}) => {
-    return await Notification.create({
-        userId,
-        actorId,
-        type,
-        title,
-        message,
-        data,
-    });
+    data,
+  };
+
+  const {
+    data: notification,
+    error,
+  } = await supabase
+    .from("notifications")
+    .insert(notificationData)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return notification;
 };
 
 export const getNotificationService = async (userId) => {

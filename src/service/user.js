@@ -89,26 +89,89 @@ export const getTopRidersService = async (limit) => {
 };
 
 export const updateProfileService = async (userId, data) => {
+  // Check whether user exists
+  const { data: existingUser, error: findError } = await supabase
+    .from("users")
+    .select("id, image_public_id")
+    .eq("id", userId)
+    .maybeSingle();
 
-  const isExist = await User.findById(userId);
-  if (!isExist) {
+  if (findError) {
+    throw findError;
+  }
+
+  if (!existingUser) {
     throw new Error("User not found");
   }
 
-  // const mobile = await User.find({
-  //   mobile: data.mobile
-  // })
+  // Convert frontend camelCase → Supabase snake_case
+  const updateData = {
+    first_name: data.firstName,
+    last_name: data.lastName,
+    profile_image: data.profileImage,
+    gender: data.gender,
+    mobile: data.mobile,
+    bio: data.bio,
+    zipcode: data.zipcode,
+    dob: data.dob,
+    image_public_id: data.imagePublicId,
+    updated_at: new Date().toISOString(),
+  };
 
-  // if (mobile.length !== 0) {
-  //   throw new Error('Mobile no already exist!')
-  // }
+  // Remove undefined fields
+  Object.keys(updateData).forEach((key) => {
+    if (updateData[key] === undefined) {
+      delete updateData[key];
+    }
+  });
 
-  const updatedUser = await User.findByIdAndUpdate(
-    userId,
-    data,
-    { new: true }
-  )
+  // Update user
+  const { data: updatedUser, error: updateError } = await supabase
+    .from("users")
+    .update(updateData)
+    .eq("id", userId)
+    .select(`
+      id,
+      referral_code,
+      first_name,
+      last_name,
+      profile_image,
+      email,
+      gender,
+      mobile,
+      bio,
+      zipcode,
+      dob,
+      role,
+      ref_approve,
+      completed_ride_count,
+      image_public_id,
+      created_at,
+      updated_at
+    `)
+    .single();
 
+  if (updateError) {
+    throw updateError;
+  }
 
-  return updatedUser;
-}
+  return {
+    id: updatedUser.id,
+    referralCode: updatedUser.referral_code,
+    firstName: updatedUser.first_name,
+    lastName: updatedUser.last_name,
+    profileImage: updatedUser.profile_image,
+    email: updatedUser.email,
+    gender: updatedUser.gender,
+    mobile: updatedUser.mobile,
+    bio: updatedUser.bio,
+    zipcode: updatedUser.zipcode,
+    dob: updatedUser.dob,
+    role: updatedUser.role,
+    refApprove: updatedUser.ref_approve,
+    completedRideCount: updatedUser.completed_ride_count,
+    imagePublicId: updatedUser.image_public_id,
+    createdAt: updatedUser.created_at,
+    updatedAt: updatedUser.updated_at,
+  };
+};
