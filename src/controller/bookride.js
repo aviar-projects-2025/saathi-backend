@@ -163,7 +163,7 @@ const statusBookride = async (req, res) => {
     const { requestId } = req.params;
     const { type: statusType } = req.query;
 
-    console.log(statusType, "statusType");
+
 
     if (!["Approve", "Reject", "Cancel"].includes(statusType)) {
       return res.status(400).json({
@@ -176,8 +176,8 @@ const statusBookride = async (req, res) => {
       statusType === "Approve"
         ? "request_accepted"
         : statusType === "Cancel"
-        ? "request_cancelled"
-        : "request_rejected";
+          ? "request_cancelled"
+          : "request_rejected";
 
     // Get the request BEFORE changing its status
     const bookingRequest = await Bookride.findById(requestId);
@@ -197,7 +197,7 @@ const statusBookride = async (req, res) => {
       0
     );
 
-    console.log("requestedSeats:", requestedSeats);
+
 
     // Existing logic
     const rides = await statusBookRide(requestId, statusType);
@@ -218,15 +218,13 @@ const statusBookride = async (req, res) => {
           rides.rideId,
           {
             $inc: {
-              rejectedSeats: seatsRequested,
+              rejectedSeats: requestedSeats
             },
           },
           { new: true }
         );
 
-        console.log(
-          `Added ${requestedSeats} rejected seat(s) to ride ${rides.rideId}`
-        );
+
       }
     }
 
@@ -318,8 +316,8 @@ const statusBookride = async (req, res) => {
         statusType === "Approve"
           ? "Ride request accepted"
           : statusType === "Reject"
-          ? "Ride request rejected"
-          : "Ride request cancelled",
+            ? "Ride request rejected"
+            : "Ride request cancelled",
       data: rides,
     });
   } catch (error) {
