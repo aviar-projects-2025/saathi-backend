@@ -280,9 +280,7 @@ const statusBookride = async (req, res) => {
       }
     }
 
-    // -----------------------------------
-    // NOTIFICATION
-    // -----------------------------------
+  
 
     const notif = buildNotification({
       type: notifType,
