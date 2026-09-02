@@ -124,6 +124,7 @@ const statusBookRide = async (requestId, type) => {
 
     let status;
     let approvedSeats = rideRequested.approvedSeats || 0;
+    let rejectedSeats = rideRequested.rejectedSeats || 0;
     let pendingReqSeats = rideRequested.pendingReqSeats || 0;
     let members = rideRequested.members || [];
     let pendingMembers = rideRequested.pendingMembers || [];
@@ -132,35 +133,49 @@ const statusBookRide = async (requestId, type) => {
     // only ever deduct that delta from the ride — never the cumulative total.
     let newlyApprovedSeats = 0;
 
-    if (type === "Approve") {
-      status = "ACCEPTED";
-      if (pendingReqSeats > 0) {
-        newlyApprovedSeats = pendingReqSeats;
-        approvedSeats += pendingReqSeats;
-        pendingReqSeats = 0;
+ if (type === "Approve") {
+  status = "ACCEPTED";
 
-        members = [...members, ...pendingMembers];
-        pendingMembers = [];
-      }
+  if (pendingReqSeats > 0) {
+    newlyApprovedSeats = pendingReqSeats;
 
-    } else {
-      // keep status correct
-      status = approvedSeats > 0 ? "ACCEPTED" : "REJECTED";
-      pendingReqSeats = 0;
-      pendingMembers = [];
-    }
+    approvedSeats += pendingReqSeats;
+    pendingReqSeats = 0;
+
+    members = [...members, ...pendingMembers];
+    pendingMembers = [];
+  }
+
+} else if (type === "Reject") {
+  // Reject the pending seats
+  status = approvedSeats > 0 ? "ACCEPTED" : "REJECTED";
+
+  if (pendingReqSeats > 0) {
+    rejectedSeats += pendingReqSeats;
+  }
+
+  pendingReqSeats = 0;
+  pendingMembers = [];
+
+} else if (type === "Cancel") {
+  status = "Cancelled";
+
+  pendingReqSeats = 0;
+  pendingMembers = [];
+}
 
     const request = await BookRide.findByIdAndUpdate(
-      requestId,
-      {
-        status,
-        approvedSeats,
-        pendingReqSeats,
-        members,
-        pendingMembers,
-      },
-      { new: true, session }
-    );
+  requestId,
+  {
+    status,
+    approvedSeats,
+    rejectedSeats,
+    pendingReqSeats,
+    members,
+    pendingMembers,
+  },
+  { new: true, session }
+);
 
     if (!request) throw new Error("Request not found");
 

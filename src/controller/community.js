@@ -40,7 +40,7 @@ export const editPost = async (req, res) => {
             userId,
             description,
             imageUrl,
-            communityImgPublicId 
+            communityImgPublicId
         );
 
         return res.status(200).json({
@@ -108,19 +108,34 @@ export const createPost = async (req, res) => {
 }
 
 export const getPosts = async (req, res) => {
-    try {
-        const posts = await getPostsService();
-        res.status(200).json({
-            success: true,
-            data: posts,
-        })
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        })
-    }
-}
+  try {
+    const page = Math.max(
+      Number(req.query.page) || 1,
+      1
+    );
+
+    const limit = Math.min(
+      Number(req.query.limit) || 10,
+      50
+    );
+
+    const result = await getPostsService(page, limit);
+
+    res.status(200).json({
+      success: true,
+      data: result.posts,
+      pagination: result.pagination,
+    });
+
+  } catch (error) {
+    console.error("Get community posts error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 
 export const likePost = async (req, res) => {
     try {

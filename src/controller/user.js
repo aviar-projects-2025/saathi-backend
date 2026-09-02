@@ -326,56 +326,91 @@ export const changePassword = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const { userId } = req.params;
+
     const user = await User.findById(userId);
 
-
-    let imageUrl = "";
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
 
     const databody = {
       ...req.body,
     };
 
-    if (req.file) {
-      if (user?.imagePublicId) {
-        await cloudinary.uploader.destroy(user.imagePublicId);
-      }
+    console.log(databody, "databody");
 
-      const result = await uploadToCloudinary(req.file.buffer);
-      imageUrl = result.secure_url;
-      databody.imagePublicId = result.public_id;
-    }
-
+    // Check mobile number
     const { mobile } = req.body;
+
     if (mobile) {
       const existingUser = await User.findOne({ mobile });
 
-      if (existingUser && existingUser._id.toString() !== userId) {
+      if (
+        existingUser &&
+        existingUser._id.toString() !== userId
+      ) {
         return res.status(400).json({
+          success: false,
           message: "Mobile number already exists",
         });
       }
     }
 
-    if (imageUrl) {
-      databody.profileImage = imageUrl;
+    // Store old Cloudinary public ID
+    const oldImagePublicId = user.imagePublicId;
+
+    // Update database
+    const data = await updateProfileService(
+      userId,
+      databody
+    );
+
+    // If a new profile image was uploaded,
+    // delete the old image from Cloudinary
+    if (
+      req.body.profileImage &&
+      req.body.imagePublicId &&
+      oldImagePublicId &&
+      oldImagePublicId !== req.body.imagePublicId
+    ) {
+      try {
+        await cloudinary.uploader.destroy(
+          oldImagePublicId,
+          {
+            resource_type: "image",
+          }
+        );
+
+        console.log(
+          "Old profile image deleted:",
+          oldImagePublicId
+        );
+      } catch (deleteError) {
+        console.error(
+          "Failed to delete old Cloudinary image:",
+          deleteError
+        );
+      }
     }
 
-    const data = await updateProfileService(userId, databody);
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Profile updated",
       data,
     });
+
   } catch (error) {
-    res.status(500).json({
+    console.error("Update profile error:", error);
+
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 };
-
-// controller/user.js
 
 
 export const getTopRiders = async (req, res) => {
