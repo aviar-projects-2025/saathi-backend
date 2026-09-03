@@ -38,6 +38,7 @@ export const createUser = async (req, res) => {
       lastName,
       email,
       dob,
+      mobile,
       password,
       referralCode,
     } = req.body;
@@ -79,10 +80,11 @@ export const createUser = async (req, res) => {
       lastName,
       email,
       dob,
+      mobile,
       password: hashedPassword,
       referralCode: myReferralCode,
       referredBy,
-      refApprove: referralCode && "Waiting"
+      refApprove: referralCode && "Approved"
     });
 
     if (referredBy) {
@@ -96,7 +98,7 @@ export const createUser = async (req, res) => {
       const notification = await createNotificationService({
         userId: referredBy,
         actorId: user._id,
-        type: "referral_pending",
+        type: "referral_approved",
         category: "New Referral",
         ...notif,
         data: {
@@ -105,7 +107,7 @@ export const createUser = async (req, res) => {
       });
 
       emitNotification(referredBy.toString(), {
-        type: "referral_pending",
+        type: "referral_approved",
         message: notif.message,
         category: "New Referral",
         data: {
