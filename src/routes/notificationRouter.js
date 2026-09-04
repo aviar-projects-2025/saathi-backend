@@ -1,9 +1,10 @@
 import express from 'express'
-import { createNotification, getNotificationById, updateNotificationStatus } from '../controller/notification.js';
+import { createNotification, getNotificationById, updateNotificationStatus, markAsRead } from '../controller/notification.js';
 
 const router = express.Router();
 
 router.get('/:userId', getNotificationById)
+router.patch('/:userId', markAsRead)
 router.post('/', createNotification);
 router.patch('/:id', updateNotificationStatus);
 

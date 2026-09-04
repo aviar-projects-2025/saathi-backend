@@ -1,3 +1,4 @@
+import Notification from "../model/notification.js";
 import { getNotificationService, updateNotificationStatusService } from "../service/notification.js";
 
 export const createNotification = async (req, res) => {
@@ -31,7 +32,7 @@ export const getNotificationById = async (req, res) => {
 export const updateNotificationStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const data =  {
+        const data = {
             isRead: true
         }
         const updateNotification = await updateNotificationStatusService(id, data);
@@ -55,3 +56,34 @@ export const getUnreadNotificationById = async (req, res) => {
 
     }
 }
+
+export const markAsRead = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const result = await Notification.updateMany(
+      {
+        userId,
+        isRead: false,
+      },
+      {
+        $set: {
+          isRead: true,
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "All notifications marked as read",
+      modifiedCount: result.modifiedCount,
+    });
+
+  } catch (error) {
+    console.error("Error marking notifications as read:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to mark notifications as read",
+    });
+  }
+};
