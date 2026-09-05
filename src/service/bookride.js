@@ -128,54 +128,57 @@ const statusBookRide = async (requestId, type) => {
     let pendingReqSeats = rideRequested.pendingReqSeats || 0;
     let members = rideRequested.members || [];
     let pendingMembers = rideRequested.pendingMembers || [];
+    let seatsRequested = rideRequested.seatsRequested || 0;
 
     // Track exactly how many *new* seats get approved in this call, so we
     // only ever deduct that delta from the ride — never the cumulative total.
     let newlyApprovedSeats = 0;
 
- if (type === "Approve") {
-  status = "ACCEPTED";
+    if (type === "Approve") {
+      status = "ACCEPTED";
 
-  if (pendingReqSeats > 0) {
-    newlyApprovedSeats = pendingReqSeats;
+      if (pendingReqSeats > 0) {
+        newlyApprovedSeats = pendingReqSeats;
 
-    approvedSeats += pendingReqSeats;
-    pendingReqSeats = 0;
+        approvedSeats += pendingReqSeats;
+        pendingReqSeats = 0;
 
-    members = [...members, ...pendingMembers];
-    pendingMembers = [];
-  }
+        members = [...members, ...pendingMembers];
+        pendingMembers = [];
+      }
 
-} else if (type === "Reject") {
-  // Reject the pending seats
-  status = approvedSeats > 0 ? "ACCEPTED" : "REJECTED";
+    } else if (type === "Reject") {
+      // Reject the pending seats
+      status = approvedSeats > 0 ? "ACCEPTED" : "REJECTED";
 
-  if (pendingReqSeats > 0) {
-    rejectedSeats += pendingReqSeats;
-  }
+      if (pendingReqSeats > 0) {
+        rejectedSeats += pendingReqSeats;
+      }
 
-  pendingReqSeats = 0;
-  pendingMembers = [];
+      pendingReqSeats = 0;
+      pendingMembers = [];
+      seatsRequested = 0;
 
-} else if (type === "Cancel") {
-  status = "Cancelled";
-
-  pendingReqSeats = 0;
-  pendingMembers = [];
-}
+    } else if (type === "Cancel") {
+      status = "CANCELLED";
+      pendingReqSeats = 0;
+      // pendingMembers = [];
+      seatsRequested = 0;
+      // membersCount=0;
+    }
 
     const request = await BookRide.findByIdAndUpdate(
-  requestId,
-  {
-    status,
-    approvedSeats,
-    rejectedSeats,
-    pendingReqSeats,
-    members,
-    pendingMembers,
-  },
-  { new: true, session }
-);
+      requestId,
+      {
+        status,
+        approvedSeats,
+        rejectedSeats,
+        pendingReqSeats,
+        members,
+        pendingMembers,
+      },
+      { new: true, session }
+    );
 
     if (!request) throw new Error("Request not found");
 

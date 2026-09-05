@@ -280,15 +280,17 @@ const statusBookride = async (req, res) => {
       }
     }
 
-  
+
 
     const notif = buildNotification({
       type: notifType,
     });
 
+
+
     const notifictioncreated = await createNotificationService({
-      userId: rides.requestedBy,
-      actorId: rides.rideOwner,
+      userId: rides.rideOwner,
+      actorId: rides.requestedBy,
       type: notifType,
       ...notif,
       data: {
@@ -296,6 +298,8 @@ const statusBookride = async (req, res) => {
         requestId: rides._id,
       },
     });
+
+    console.log(notifictioncreated, 'notifictioncreated')
 
     emitNotification(rides.requestedBy.toString(), {
       type: notifType,
