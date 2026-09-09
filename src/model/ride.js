@@ -113,7 +113,7 @@ const rideSchema = new mongoose.Schema(
         "Student travel companion",
         "Women-only companion",
         "Family companion",
-        "",
+        "Regular",
       ],
       required: function () {
         return this.modeOfTravel === "Flight";
