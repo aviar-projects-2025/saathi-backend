@@ -223,7 +223,25 @@ const statusBookRide = async (requestId, type) => {
   }
 };
 
+const statusBookRideService = async (requestId, statusType) => {
+  const bookingRequest = await BookRide.findById(requestId);
 
+  if (!bookingRequest) {
+    throw new Error("Request not found");
+  }
+
+  if (statusType === "Approve") {
+    bookingRequest.status = "ACCEPTED";
+  } else if (statusType === "Reject") {
+    bookingRequest.status = "REJECTED";
+  } else if (statusType === "Cancel") {
+    bookingRequest.status = "CANCELLED";
+  }
+
+  await bookingRequest.save();
+
+  return bookingRequest;
+};
 // Get single Ride
 const getBookRideById = async (id) => {
   return await BookRide.findById(id);
@@ -237,6 +255,7 @@ export {
   editBookRideService,
   getBookRideService,
   getBookRideById,
+  statusBookRideService,
   getSentRequestsService,
   deleteBookRideService,
   statusBookRide

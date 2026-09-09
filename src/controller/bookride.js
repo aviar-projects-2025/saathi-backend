@@ -1,5 +1,6 @@
 import {
   editBookRideService,
+  statusBookRideService,
   deleteBookRideService,
   getBookRideService,
   getSentRequestsService,
@@ -163,7 +164,8 @@ const statusBookride = async (req, res) => {
     const { requestId } = req.params;
     const { type: statusType } = req.query;
 
-
+    console.log("requestId:", requestId);
+    console.log("statusType:", statusType);
 
     if (!["Approve", "Reject", "Cancel"].includes(statusType)) {
       return res.status(400).json({
@@ -179,8 +181,10 @@ const statusBookride = async (req, res) => {
           ? "request_cancelled"
           : "request_rejected";
 
-    // Get the request BEFORE changing its status
-    const bookingRequest = await Bookride.findById(requestId);
+    // ---------------------------------------------------------
+    // Get booking request BEFORE changing status
+    // ---------------------------------------------------------
+    const bookingRequest = await BookRide.findById(requestId);
 
     if (!bookingRequest) {
       return res.status(404).json({
@@ -189,18 +193,31 @@ const statusBookride = async (req, res) => {
       });
     }
 
-    // Get requested seats before statusBookRide modifies anything
-    const requestedSeats = Number(
-      bookingRequest.seatsRequested ||
-      bookingRequest.seatsRequested ||
-      bookingRequest.pendingReqSeats ||
-      0
+    const previousStatus = bookingRequest.status;
+
+    // Keep the counts before statusBookRideService changes anything
+    const approvedSeats = Number(bookingRequest.approvedSeats || 0);
+
+    const pendingSeats = Number(
+      bookingRequest.pendingReqSeats || 0
     );
 
+    const requestedSeats = Number(
+      bookingRequest.seatsRequested || 0
+    );
 
+    console.log("previousStatus:", previousStatus);
+    console.log("approvedSeats:", approvedSeats);
+    console.log("pendingSeats:", pendingSeats);
+    console.log("requestedSeats:", requestedSeats);
 
-    // Existing logic
-    const rides = await statusBookRide(requestId, statusType);
+    // ---------------------------------------------------------
+    // Change booking status
+    // ---------------------------------------------------------
+    const rides = await statusBookRideService(
+      requestId,
+      statusType
+    );
 
     if (!rides) {
       return res.status(404).json({
@@ -209,38 +226,103 @@ const statusBookride = async (req, res) => {
       });
     }
 
-    // -----------------------------------
+    // =========================================================
     // REJECT
-    // -----------------------------------
+    // =========================================================
     if (statusType === "Reject") {
-      if (requestedSeats > 0) {
-        await Ride.findByIdAndUpdate(
-          rides.rideId,
-          {
-            $inc: {
-              rejectedSeats: requestedSeats
+
+      // -------------------------------------------------------
+      // PENDING -> REJECTED
+      // -------------------------------------------------------
+      if (previousStatus === "PENDING") {
+
+        const seatsToReject =
+          pendingSeats || requestedSeats;
+
+        if (seatsToReject > 0) {
+          await BookRide.findByIdAndUpdate(
+            requestId,
+            {
+              $inc: {
+                rejectedSeats: seatsToReject,
+              },
+              $set: {
+                pendingReqSeats: 0,
+              },
             },
-          },
-          { new: true }
-        );
+            { new: true }
+          );
 
+          // These seats were never consumed,
+          // so availableSeats does NOT increase.
+          await Ride.findByIdAndUpdate(
+            rides.rideId,
+            {
+              $inc: {
+                rejectedSeats: seatsToReject,
+              },
+            },
+            { new: true }
+          );
+        }
+      }
 
+      // -------------------------------------------------------
+      // ACCEPTED -> REJECTED
+      // -------------------------------------------------------
+      else if (previousStatus === "ACCEPTED") {
+
+        const seatsToReject =
+          approvedSeats || bookingRequest.members?.length || 0;
+
+        if (seatsToReject > 0) {
+
+          // Update BookRide
+          await BookRide.findByIdAndUpdate(
+            requestId,
+            {
+              $inc: {
+                approvedSeats: -seatsToReject,
+                rejectedSeats: seatsToReject,
+              },
+              $set: {
+                members: [],
+              },
+            },
+            { new: true }
+          );
+
+          // Return approved seats back to Ride
+          await Ride.findByIdAndUpdate(
+            rides.rideId,
+            {
+              $inc: {
+                availableSeats: seatsToReject,
+                rejectedSeats: seatsToReject,
+              },
+            },
+            { new: true }
+          );
+        }
       }
     }
 
-    // -----------------------------------
+    // =========================================================
     // APPROVE
-    // -----------------------------------
+    // =========================================================
     if (statusType === "Approve") {
+
       const ride = await Ride.findById(rides.rideId);
 
       if (ride && ride.availableSeats === 0) {
-        const pendingRequests = await Bookride.find({
+
+        const pendingRequests = await BookRide.find({
           rideId: ride._id,
           status: "PENDING",
         });
 
-        await Bookride.updateMany(
+        // Auto reject all remaining pending requests
+        await BookRide.updateMany(
           {
             rideId: ride._id,
             status: "PENDING",
@@ -248,71 +330,110 @@ const statusBookride = async (req, res) => {
           {
             $set: {
               status: "REJECTED",
+              pendingReqSeats: 0,
             },
           }
         );
 
-        for (const req of pendingRequests) {
+        // Update rejectedSeats for each pending request
+        for (const pendingRequest of pendingRequests) {
+
+          const seatsToReject = Number(
+            pendingRequest.pendingReqSeats ||
+            pendingRequest.seatsRequested ||
+            0
+          );
+
+          if (seatsToReject > 0) {
+            await BookRide.findByIdAndUpdate(
+              pendingRequest._id,
+              {
+                $inc: {
+                  rejectedSeats: seatsToReject,
+                },
+              }
+            );
+
+            await Ride.findByIdAndUpdate(
+              ride._id,
+              {
+                $inc: {
+                  rejectedSeats: seatsToReject,
+                },
+              }
+            );
+          }
+
+          // Notification
           const notif = buildNotification({
             type: "request_rejected",
           });
 
           await createNotificationService({
-            userId: req.requestedBy,
-            actorId: req.rideOwner,
+            userId: pendingRequest.requestedBy,
+            actorId: pendingRequest.rideOwner,
             type: "request_rejected",
             ...notif,
             data: {
-              rideId: req.rideId,
-              requestId: req._id,
+              rideId: pendingRequest.rideId,
+              requestId: pendingRequest._id,
             },
           });
 
-          emitNotification(req.requestedBy.toString(), {
-            type: "request_rejected",
-            message: notif.message,
-            data: {
-              rideId: req.rideId,
-              requestId: req._id,
-            },
-          });
+          emitNotification(
+            pendingRequest.requestedBy.toString(),
+            {
+              type: "request_rejected",
+              message: notif.message,
+              data: {
+                rideId: pendingRequest.rideId,
+                requestId: pendingRequest._id,
+              },
+            }
+          );
         }
       }
     }
 
-
+    // =========================================================
+    // NOTIFICATION FOR CURRENT REQUEST
+    // =========================================================
 
     const notif = buildNotification({
       type: notifType,
     });
 
+    const notificationCreated =
+      await createNotificationService({
+        userId: rides.rideOwner,
+        actorId: rides.requestedBy,
+        type: notifType,
+        ...notif,
+        data: {
+          rideId: rides.rideId,
+          requestId: rides._id,
+        },
+      });
 
+    emitNotification(
+      rides.requestedBy.toString(),
+      {
+        type: notifType,
+        message: notif.message,
+        category: notif.title,
+        data: {
+          _id: notificationCreated._id,
+          rideId: rides.rideId,
+          requestId: rides._id,
+        },
+      }
+    );
 
-    const notifictioncreated = await createNotificationService({
-      userId: rides.rideOwner,
-      actorId: rides.requestedBy,
-      type: notifType,
-      ...notif,
-      data: {
-        rideId: rides.rideId,
-        requestId: rides._id,
-      },
-    });
+    // =========================================================
+    // RESPONSE
+    // =========================================================
 
-    console.log(notifictioncreated, 'notifictioncreated')
-
-    emitNotification(rides.requestedBy.toString(), {
-      type: notifType,
-      message: notif.message,
-      category: notif.title,
-      data: {
-        _id: notifictioncreated._id,
-        rideId: rides.rideId,
-        requestId: rides._id,
-      },
-    });
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message:
         statusType === "Approve"
@@ -322,15 +443,17 @@ const statusBookride = async (req, res) => {
             : "Ride request cancelled",
       data: rides,
     });
+
   } catch (error) {
     console.error("statusBookride error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 };
+
 
 const editBookride = async (req, res) => {
   try {
