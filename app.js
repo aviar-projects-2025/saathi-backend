@@ -20,12 +20,35 @@ import referralInvite from "./src/routes/referralInvite.js"
 const app = express();
 
 app.use(express.json());
-app.use(cors({
-    origin: "http://localhost:5173",
-    credentials: true
-}));
 
-app.use("/api/v1/bookride",bookrideRouter)
+const allowedOrigins = [
+    "http://localhost:5173",
+    "https://saathi-frontend-sl8k.vercel.app",
+];
+
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests without an Origin
+      // such as Postman/server-to-server requests
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(
+        new Error("Not allowed by CORS")
+      );
+    },
+    credentials: true,
+  })
+);
+
+app.use("/api/v1/bookride", bookrideRouter)
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/rides", rideRoutes)
 app.use("/api/v1/community", communityRoutes)
