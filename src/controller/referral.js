@@ -100,7 +100,7 @@ export const removeReferrals = async (req, res) => {
 
 export const sendReferralLink = async (req, res) => {
     try {
-        const { mobile_number } = req.body;
+        const { mobile_number, referralCode } = req.body;
 
         if (!mobile_number || !/^\d{10}$/.test(mobile_number)) {
             return res.status(400).json({
@@ -111,25 +111,32 @@ export const sendReferralLink = async (req, res) => {
 
         const phoneNumber = `+91${mobile_number}`;
 
-        const verification = await twilioClient.verify.v2
-            .services(process.env.TWILIO_VERIFY_SID)
-            .verifications.create({
-                to: phoneNumber,
-                channel: "sms",
-            });
+        const referralLink = `https://saathirides.net/register?ref=${referralCode}`;
+
+        const message = await twilioClient.messages.create({
+            body: `Join me on Saathi Rides! 🚗
+
+Register using my referral link:
+${referralLink}`,
+            messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+            to: phoneNumber,
+        });
+
+        console.log("Message SID:", message.sid);
+        console.log("Initial Status:", message.status);
 
         return res.status(200).json({
             success: true,
-            message: "OTP sent successfully",
-            status: verification.status,
+            message: "Referral link sent successfully",
+            sid: message.sid,
         });
 
     } catch (error) {
-        console.error("Twilio OTP Error:", error);
+        console.error("Twilio SMS Error:", error);
 
         return res.status(500).json({
             success: false,
-            message: "Failed to send OTP",
+            message: error.message || "Failed to send referral link",
         });
     }
 };

@@ -24,6 +24,32 @@ const rideSchema = new mongoose.Schema(
       required: true,
     },
 
+    fromLocation: {
+      latitude: {
+        type: Number,
+        min: -90,
+        max: 90,
+      },
+      longitude: {
+        type: Number,
+        min: -180,
+        max: 180,
+      },
+    },
+
+    destinationLocation: {
+      latitude: {
+        type: Number,
+        min: -90,
+        max: 90,
+      },
+      longitude: {
+        type: Number,
+        min: -180,
+        max: 180,
+      },
+    },
+
     startTime: {
       type: Date,
       required: true,
@@ -54,8 +80,14 @@ const rideSchema = new mongoose.Schema(
       type: Number,
 
     },
+    distanceKm: {
+      type: Number,
+      min: 0,
+    },
+
     duration: {
       type: Number,
+      min: 0,
     },
     // Flight fields
     fromCountry: {

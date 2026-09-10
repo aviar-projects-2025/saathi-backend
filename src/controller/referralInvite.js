@@ -4,6 +4,7 @@ import Referral from "../model/referral.js"
 export const createReferral = async (req, res) => {
     try {
         const data = { ...req.body }
+        console.log(data)
         const referral = await Referral.create(data)
         res.status(201).json({
             status: true,
