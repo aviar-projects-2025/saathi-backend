@@ -100,7 +100,8 @@ export const removeReferrals = async (req, res) => {
 
 export const sendReferralLink = async (req, res) => {
     try {
-        const { mobile_number, referralCode } = req.body;
+        // console.log(req.body)
+        const { mobile_number, referralCode, shareLink } = req.body;
 
         if (!mobile_number || !/^\d{10}$/.test(mobile_number)) {
             return res.status(400).json({
@@ -111,7 +112,9 @@ export const sendReferralLink = async (req, res) => {
 
         const phoneNumber = `+91${mobile_number}`;
 
-        const referralLink = `https://saathirides.net/register?ref=${referralCode}`;
+        // const referralLink = `https://saathirides.net/register?ref=${referralCode}`;
+        const referralLink = shareLink;
+
 
         const message = await twilioClient.messages.create({
             body: `Join me on Saathi Rides! 🚗
@@ -122,8 +125,8 @@ ${referralLink}`,
             to: phoneNumber,
         });
 
-        console.log("Message SID:", message.sid);
-        console.log("Initial Status:", message.status);
+        // console.log("Message SID:", message.sid);
+        // console.log("Initial Status:", message.status);
 
         return res.status(200).json({
             success: true,
