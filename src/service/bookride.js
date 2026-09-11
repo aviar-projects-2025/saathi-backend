@@ -92,7 +92,7 @@ const getBookRideService = async (userId, type) => {
   if (type === "requested") {
     return await BookRide.find({
       requestedBy: userId,
-    });
+    }).populate("rideId", "totalSeats");
   }
 
   if (type === "received") {
@@ -101,6 +101,7 @@ const getBookRideService = async (userId, type) => {
     })
       .populate({
         path: "rideId",
+         select: "totalSeats",
         populate: {
           path: "createdBy",
           select: "firstName lastName email profileImage",
@@ -129,7 +130,8 @@ const statusBookRide = async (requestId, type) => {
     let members = rideRequested.members || [];
     let pendingMembers = rideRequested.pendingMembers || [];
     let seatsRequested = rideRequested.seatsRequested || 0;
-
+    
+    
     // Track exactly how many *new* seats get approved in this call, so we
     // only ever deduct that delta from the ride — never the cumulative total.
     let newlyApprovedSeats = 0;
@@ -175,6 +177,7 @@ const statusBookRide = async (requestId, type) => {
         rejectedSeats,
         pendingReqSeats,
         members,
+
         pendingMembers,
       },
       { new: true, session }
