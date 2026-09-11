@@ -9,19 +9,31 @@ import {
 import { emitNotification, getIO } from "../../socket.js";
 
 import Ride from "../model/ride.js";
-import Bookride from "../model/bookride.js"
-import { buildNotification, createNotificationService } from "../service/notification.js";
+import Bookride from "../model/bookride.js";
+import {
+  buildNotification,
+  createNotificationService,
+} from "../service/notification.js";
 
 const requestRide = async (req, res) => {
   try {
     const { rideId } = req.params;
     const data = req.body;
 
-    const ride = await Ride.findById(rideId);
+    const ride = await Ride.findById(rideId).select(
+      "totalSeats createdBy modeOfTravel from destination",
+    );
     if (!ride) {
-      return res.status(404).json({ success: false, message: "Ride not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Ride not found" });
     }
-
+    console.log(
+      "Ride createdBy:",
+      ride.createdBy.toString(),
+      "Requested by:",
+      data.requestedBy.toString(),
+    );
     if (ride.createdBy.toString() === data.requestedBy.toString()) {
       return res.status(400).json({
         success: false,
@@ -37,13 +49,14 @@ const requestRide = async (req, res) => {
 
     const alreadyRequestedSeats = userRequests.reduce(
       (total, req) => total + Number(req.seatsRequested || 0),
-      0
+      0,
     );
 
     const isFlight = ride.modeOfTravel === "Flight";
 
     if (!isFlight && userRequests?.status !== "PENDING") {
-      const remainingSeats = Number(ride.availableSeats) - alreadyRequestedSeats;
+      const remainingSeats =
+        Number(ride.availableSeats) - alreadyRequestedSeats;
 
       if (remainingSeats <= 0) {
         return res.status(400).json({
@@ -65,11 +78,15 @@ const requestRide = async (req, res) => {
       rideId,
       pendingReqSeats: data.seatsRequested,
       rideOwner: ride.createdBy,
+      totalSeats: ride.totalSeats,
+      availableSeats: ride.availableSeats,
       requestedBy: data.requestedBy,
     });
 
-    const populatedBooking = await Bookride.findById(bookingData._id)
-      .populate("requestedBy", "firstName lastName profileImage email");
+    const populatedBooking = await Bookride.findById(bookingData._id).populate(
+      "requestedBy",
+      "firstName lastName profileImage email",
+    );
 
     const actorName = data.firstName;
 
@@ -112,7 +129,6 @@ const requestRide = async (req, res) => {
         : "Seat request sent successfully",
       data: bookingData,
     });
-
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -158,7 +174,6 @@ const getBookrideSend = async (req, res) => {
     });
   }
 };
-
 
 const statusBookride = async (req, res) => {
   try {
@@ -221,7 +236,6 @@ const statusBookride = async (req, res) => {
       });
     }
 
-
     const hasPendingSeats = currentPendingSeats > 0;
 
     if (statusType === "Approve") {
@@ -244,10 +258,7 @@ const statusBookride = async (req, res) => {
 
       bookingRequest.approvedSeats = currentApprovedSeats + seatsToApprove;
       bookingRequest.pendingReqSeats = 0;
-      bookingRequest.seatsRequested = Math.max(
-        bookingRequest.approvedSeats,
-        1
-      );
+      bookingRequest.seatsRequested = Math.max(bookingRequest.approvedSeats, 1);
 
       const pendingMembers = bookingRequest.pendingMembers || [];
       bookingRequest.members = [
@@ -270,7 +281,6 @@ const statusBookride = async (req, res) => {
     // REJECT
     // ==================================================
     else if (statusType === "Reject") {
-
       if (hasPendingSeats) {
         const seatsToReject = currentPendingSeats;
 
@@ -283,16 +293,14 @@ const statusBookride = async (req, res) => {
 
         bookingRequest.seatsRequested = Math.max(
           currentApprovedSeats + seatsToReject,
-          1
+          1,
         );
 
         await bookingRequest.save();
 
         ride.rejectedSeats = Number(ride.rejectedSeats || 0) + seatsToReject;
         await ride.save();
-      }
-
-      else if (previousStatus === "ACCEPTED" && currentApprovedSeats > 0) {
+      } else if (previousStatus === "ACCEPTED" && currentApprovedSeats > 0) {
         const seatsToReject = currentApprovedSeats;
 
         bookingRequest.approvedSeats = 0;
@@ -318,9 +326,7 @@ const statusBookride = async (req, res) => {
           message: `Cannot reject request with status ${previousStatus}`,
         });
       }
-    }
-
-    else if (statusType === "Cancel") {
+    } else if (statusType === "Cancel") {
       // Same principle as Reject: pending seats first.
       if (hasPendingSeats) {
         const seatsToCancel = currentPendingSeats;
@@ -331,7 +337,7 @@ const statusBookride = async (req, res) => {
           currentApprovedSeats > 0 ? "ACCEPTED" : "CANCELLED";
         bookingRequest.seatsRequested = Math.max(
           currentApprovedSeats + seatsToCancel,
-          1
+          1,
         );
 
         await bookingRequest.save();
@@ -413,10 +419,6 @@ const statusBookride = async (req, res) => {
   }
 };
 
-
-
-
-
 const editBookride = async (req, res) => {
   try {
     const { id } = req.params;
@@ -437,7 +439,6 @@ const editBookride = async (req, res) => {
 };
 
 const deleteBookride = async (req, res) => {
-
   try {
     const { requestId } = req.params;
 

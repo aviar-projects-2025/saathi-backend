@@ -65,7 +65,12 @@ const bookRideSchema = new mongoose.Schema(
       default: 0,
       min: 0
     },
-
+    totalSeats: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+  
     membersCount: {
       type: Number,
       required: true,
