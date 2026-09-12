@@ -222,6 +222,7 @@ export const loginUser = async (req, res) => {
       lastName: user.lastName,
       email: user.email,
       role: user.role,
+      isMessageApproved: user.isMessageApproved,
       refApprove: user.refApprove,
       profileImage: user.profileImage,
     };
