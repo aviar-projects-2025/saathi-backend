@@ -124,9 +124,11 @@ const statusBookRide = async (requestId, type) => {
 
     let status;
     let approvedSeats = rideRequested.approvedSeats || 0;
+    let rejectedSeats = rideRequested.rejectedSeats || 0;
     let pendingReqSeats = rideRequested.pendingReqSeats || 0;
     let members = rideRequested.members || [];
     let pendingMembers = rideRequested.pendingMembers || [];
+    let seatsRequested = rideRequested.seatsRequested || 0;
 
     // Track exactly how many *new* seats get approved in this call, so we
     // only ever deduct that delta from the ride — never the cumulative total.
@@ -134,8 +136,10 @@ const statusBookRide = async (requestId, type) => {
 
     if (type === "Approve") {
       status = "ACCEPTED";
+
       if (pendingReqSeats > 0) {
         newlyApprovedSeats = pendingReqSeats;
+
         approvedSeats += pendingReqSeats;
         pendingReqSeats = 0;
 
@@ -143,16 +147,24 @@ const statusBookRide = async (requestId, type) => {
         pendingMembers = [];
       }
 
-    } else if(type === "Cancel") {
-      // keep status correct
-      console.log(approvedSeats, ' else if version')
-      status = "Cancelled"
-      pendingReqSeats = 0;
-      pendingMembers = [];
-    } else {
+    } else if (type === "Reject") {
+      // Reject the pending seats
       status = approvedSeats > 0 ? "ACCEPTED" : "REJECTED";
+
+      if (pendingReqSeats > 0) {
+        rejectedSeats += pendingReqSeats;
+      }
+
       pendingReqSeats = 0;
       pendingMembers = [];
+      seatsRequested = 0;
+
+    } else if (type === "Cancel") {
+      status = "CANCELLED";
+      pendingReqSeats = 0;
+      // pendingMembers = [];
+      seatsRequested = 0;
+      // membersCount=0;
     }
 
     const request = await BookRide.findByIdAndUpdate(
@@ -160,6 +172,7 @@ const statusBookRide = async (requestId, type) => {
       {
         status,
         approvedSeats,
+        rejectedSeats,
         pendingReqSeats,
         members,
         pendingMembers,
@@ -210,7 +223,25 @@ const statusBookRide = async (requestId, type) => {
   }
 };
 
+const statusBookRideService = async (requestId, statusType) => {
+  const bookingRequest = await BookRide.findById(requestId);
 
+  if (!bookingRequest) {
+    throw new Error("Request not found");
+  }
+
+  if (statusType === "Approve") {
+    bookingRequest.status = "ACCEPTED";
+  } else if (statusType === "Reject") {
+    bookingRequest.status = "REJECTED";
+  } else if (statusType === "Cancel") {
+    bookingRequest.status = "CANCELLED";
+  }
+
+  await bookingRequest.save();
+
+  return bookingRequest;
+};
 // Get single Ride
 const getBookRideById = async (id) => {
   return await BookRide.findById(id);
@@ -224,6 +255,7 @@ export {
   editBookRideService,
   getBookRideService,
   getBookRideById,
+  statusBookRideService,
   getSentRequestsService,
   deleteBookRideService,
   statusBookRide

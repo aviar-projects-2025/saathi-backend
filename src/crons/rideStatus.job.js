@@ -24,6 +24,7 @@ cron.schedule("* * * * *", async () => {
             emitNotification(booking.requestedBy, {
                 type: "ride_started",
                 message: "Your ride has started 🚀",
+                category: "Ride Started",
                 ride: {
                     _id: ride._id,
                     from: ride.from,
@@ -35,48 +36,22 @@ cron.schedule("* * * * *", async () => {
             });
         }
 
-        // emitNotification(ride.createdBy, {
-        //     type: "ride_started",
-        //     message: "Looks like you have started your ride, confirm!",
-        //     ride: {
-        //         _id: ride._id,
-        //         from: ride.from,
-        //         destination: ride.destination,
-        //         startTime: ride.startTime,
-        //         modeOfTravel: ride.modeOfTravel,
-        //     },
-        //     data: { rideId: ride._id },
-        // });
-
-        const now = new Date();
-
-
-        const shouldNotify =
-            !ride.lastRideStartedNotificationAt ||
-            (now - ride.lastRideStartedNotificationAt) >= 5 * 60 * 1000;
-
-        if (shouldNotify) {
-
-            emitNotification(ride.createdBy, {
-                type: "ride_started",
-                message: "Looks like you have started your ride, confirm!",
-                category: "Ride Started",
-                ride: {
-                    _id: ride._id,
-                    from: ride.from,
-                    destination: ride.destination,
-                    startTime: ride.startTime,
-                    modeOfTravel: ride.modeOfTravel,
-                },
-                data: {
-                    rideId: ride._id,
-                    _id: ride._id,
-                },
-            });
-
-            ride.lastRideStartedNotificationAt = now;
-            await ride.save();
-        }
+        emitNotification(ride.createdBy, {
+            type: "ride_started",
+            message: "Looks like you have started your ride, confirm!",
+            category: "Ride Started",
+            ride: {
+                _id: ride._id,
+                from: ride.from,
+                destination: ride.destination,
+                startTime: ride.startTime,
+                modeOfTravel: ride.modeOfTravel,
+            },
+            data: {
+                rideId: ride._id,
+                _id: ride._id,
+            },
+        });
 
     }
 
@@ -92,3 +67,102 @@ cron.schedule("* * * * *", async () => {
     //     { status: "AUTO_REJECTED" }
     // );
 });
+
+
+
+
+
+// import cron from "node-cron";
+// import Ride from "../model/ride.js";
+// import { emitNotification } from "../../socket.js";
+// import BookRide from "../model/bookride.js";
+// import Notification from "../model/notification.js";
+
+// cron.schedule("* * * * *", async () => {
+//     const now = new Date();
+//     // Step 1: find rides
+//     const rides = await Ride.find({
+//         travelStatus: "Waiting",
+//         startTime: { $lte: now },
+//     });
+
+//     if (!rides.length) return;
+
+//     for (const ride of rides) {
+//         const BookedRide = await BookRide.find({
+//             status: "ACCEPTED",
+//             rideId: ride._id,
+//         });
+
+//         for (const booking of BookedRide) {
+//             emitNotification(booking.requestedBy, {
+//                 type: "ride_started",
+//                 message: "Your ride has started 🚀",
+//                 ride: {
+//                     _id: ride._id,
+//                     from: ride.from,
+//                     destination: ride.destination,
+//                     startTime: ride.startTime,
+//                     modeOfTravel: ride.modeOfTravel,
+//                 },
+//                 data: { rideId: ride._id },
+//             });
+//         }
+
+//         // emitNotification(ride.createdBy, {
+//         //     type: "ride_started",
+//         //     message: "Looks like you have started your ride, confirm!",
+//         //     ride: {
+//         //         _id: ride._id,
+//         //         from: ride.from,
+//         //         destination: ride.destination,
+//         //         startTime: ride.startTime,
+//         //         modeOfTravel: ride.modeOfTravel,
+//         //     },
+//         //     data: { rideId: ride._id },
+//         // });
+
+//         const now = new Date();
+
+
+//         const shouldNotify =
+//             !ride.lastRideStartedNotificationAt ||
+//             (now - ride.lastRideStartedNotificationAt) >= 5 * 60 * 1000;
+
+//         if (shouldNotify) {
+
+//             emitNotification(ride.createdBy, {
+//                 type: "ride_started",
+//                 message: "Looks like you have started your ride, confirm!",
+//                 category: "Ride Started",
+//                 ride: {
+//                     _id: ride._id,
+//                     from: ride.from,
+//                     destination: ride.destination,
+//                     startTime: ride.startTime,
+//                     modeOfTravel: ride.modeOfTravel,
+//                 },
+//                 data: {
+//                     rideId: ride._id,
+//                     _id: ride._id,
+//                 },
+//             });
+
+//             ride.lastRideStartedNotificationAt = now;
+//             await ride.save();
+//         }
+
+//     }
+
+//     // Step 2: update rides (VERY IMPORTANT)
+//     // await Ride.updateMany(
+//     //     { _id: { $in: rides.map(r => r._id) } },
+//     //     { $set: { travelStatus: "Started" } }
+//     // );
+
+//     // // Step 3: reject pending bookings
+//     // await BookRide.updateMany(
+//     //     { rideId: { $in: rides.map(r => r._id) }, status: "PENDING" },
+//     //     { status: "AUTO_REJECTED" }
+//     // );
+// });

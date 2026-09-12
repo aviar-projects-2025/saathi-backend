@@ -183,7 +183,7 @@ export const cancelRide = async (req, res) => {
                 type: "request_cancelled",
                 message: `Your ride cancelled`,
                 data: {
-                    _id: notifictioncreated._id,
+                    // _id: notifictioncreated._id,
                     rideId: updatedRide._id,
                     status: updatedRide.travelStatus,
                     requestId: Req._id,
@@ -191,8 +191,6 @@ export const cancelRide = async (req, res) => {
                     destination: updatedRide.destination,
                 },
             });
-
-            console.log(notifictioncreated, 'notifictioncreated')
 
             emitNotification(Req.requestedBy, {
                 type: "ride_cancelled",

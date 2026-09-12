@@ -1,4 +1,5 @@
 import { sendApprovalEmail } from '../../config/sendMail.js';
+import twilioClient from '../../config/twilio.js';
 import { emitNotification } from '../../socket.js';
 import User from '../model/user.js';
 import { buildNotification, createNotificationService } from '../service/notification.js';
@@ -97,3 +98,48 @@ export const removeReferrals = async (req, res) => {
     }
 }
 
+export const sendReferralLink = async (req, res) => {
+    try {
+        // console.log(req.body)
+        const { mobile_number, referralCode, shareLink } = req.body;
+
+        if (!mobile_number || !/^\d{10}$/.test(mobile_number)) {
+            return res.status(400).json({
+                success: false,
+                message: "Enter a valid 10-digit mobile number",
+            });
+        }
+
+        const phoneNumber = `+91${mobile_number}`;
+
+        // const referralLink = `https://saathirides.net/register?ref=${referralCode}`;
+        const referralLink = shareLink;
+
+
+        const message = await twilioClient.messages.create({
+            body: `Join me on Saathi Rides! 🚗
+
+Register using my referral link:
+${referralLink}`,
+            messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+            to: phoneNumber,
+        });
+
+        // console.log("Message SID:", message.sid);
+        // console.log("Initial Status:", message.status);
+
+        return res.status(200).json({
+            success: true,
+            message: "Referral link sent successfully",
+            sid: message.sid,
+        });
+
+    } catch (error) {
+        console.error("Twilio SMS Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Failed to send referral link",
+        });
+    }
+};

@@ -11,6 +11,8 @@ import commentRoutes from "./src/routes/commentRoutes.js"
 import notificationRoutes from "./src/routes/notificationRouter.js"
 import authRoutes from './src/routes/authRoutes.js'
 import savePost from "./src/routes/savedPost.js"
+import referralInvite from "./src/routes/referralInvite.js"
+
 
 
 
@@ -46,7 +48,8 @@ app.use(
   })
 );
 
-app.use("/api/v1/bookride",bookrideRouter)
+
+app.use("/api/v1/bookride", bookrideRouter)
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/rides", rideRoutes)
 app.use("/api/v1/community", communityRoutes)
@@ -57,6 +60,8 @@ app.use("/api/v1/community/comments", commentRoutes)
 app.use("/api/v1/notification", notificationRoutes)
 app.use('/api/v1/auth', authRoutes);
 app.use("/api/v1/save-post", savePost)
+app.use("/api/v1/referralInvite", referralInvite)
+
 
 
 
