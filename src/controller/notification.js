@@ -1,4 +1,5 @@
 import Notification from "../model/notification.js";
+import Referral from "../model/referral.js";
 import User from "../model/user.js";
 import { getNotificationService, updateNotificationStatusService } from "../service/notification.js";
 
@@ -52,44 +53,51 @@ export const updateNotificationStatus = async (req, res) => {
   }
 }
 
+
 export const updateOptin = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { isMessageApproved, messageNumber } = req.body;
+    try {
+        const { messageNumber } = req.body;
+        if (!messageNumber) {
+            return res.status(400).json({
+                success: false,
+                message: "Mobile number is required",
+            });
+        }
 
-    const user = await User.findByIdAndUpdate(
-      id,
-      {
-        isMessageApproved,
-        messageNumber,
-      },
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
+        // Find referral only by mobile number
+        const referral = await Referral.findOne({
+            mobile: messageNumber,
+        });
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
+        // Number not found
+        if (!referral) {
+            return res.status(200).json({
+                success: true,
+                message: "Updated opt-in",
+            });
+        }
+
+        // Number found → approve SMS
+        referral.isMessageApproved = true;
+        referral.messageNumber = messageNumber;
+
+        await referral.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "SMS opt-in updated successfully",
+            data: referral,
+        });
+
+    } catch (error) {
+        console.error("updateOptin error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to update SMS opt-in",
+            error: error.message,
+        });
     }
-
-    return res.status(200).json({
-      success: true,
-      message: "SMS opt-in updated successfully",
-      data: user,
-    });
-  } catch (error) {
-    console.error("updateOptin error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to update SMS opt-in",
-      error: error.message,
-    });
-  }
 };
 
 export const getUnreadNotificationById = async (req, res) => {

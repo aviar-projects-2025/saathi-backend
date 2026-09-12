@@ -16,6 +16,13 @@ const referralSchema = mongoose.Schema({
         enum: ["Verified", "Waiting", 'Rejected'],
         default: "Waiting",
     },
+    isMessageApproved : {
+        type : Boolean,
+        default : false
+    },
+    messageNumber : {
+        type: String,
+    },
 
 }, 
 {

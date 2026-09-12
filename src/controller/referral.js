@@ -103,14 +103,14 @@ export const sendReferralLink = async (req, res) => {
         // console.log(req.body)
         const { mobile_number, referralCode, shareLink } = req.body;
 
-        if (!mobile_number || !/^\d{10}$/.test(mobile_number)) {
-            return res.status(400).json({
-                success: false,
-                message: "Enter a valid 10-digit mobile number",
-            });
-        }
+        // if (!mobile_number || !/^\d{10}$/.test(mobile_number)) {
+        //     return res.status(400).json({
+        //         success: false,
+        //         message: "Enter a valid 10-digit mobile number",
+        //     });
+        // }
 
-        const phoneNumber = `+91${mobile_number}`;
+        const phoneNumber = mobile_number
 
         // const referralLink = `https://saathirides.net/register?ref=${referralCode}`;
         const referralLink = shareLink;

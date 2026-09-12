@@ -6,6 +6,7 @@ export const createReferral = async (req, res) => {
         const data = { ...req.body }
         console.log(data)
         const referral = await Referral.create(data)
+        console.log(referral,'referral')
         res.status(201).json({
             status: true,
             message: referral
