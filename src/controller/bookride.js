@@ -424,6 +424,41 @@ const editBookride = async (req, res) => {
 
     const updatedRide = await editBookRideService(id, updates);
 
+    console.log(updatedRide,'updatedRide')
+
+    const notif = buildNotification({
+      type: "ride_request_update",
+      actorName : updatedRide?.requestedBy?.firstName,
+    });
+
+    const notifictioncreated = await createNotificationService({
+      userId: updatedRide?.rideId?.createdBy?._id,
+      actorId: updatedRide?.requestedBy?._id,
+      type: "ride_request_update",
+      ...notif,
+      data: {
+        rideId : updatedRide?.rideId?._id,
+        requestId: updatedRide?.requestedBy?._id,
+        from: updatedRide?.rideId?.from,
+        destination: updatedRide?.rideId?.destination,
+      },
+    });
+
+    emitNotification(updatedRide?.rideId?.createdBy?._id.toString(), {
+      type: "ride_request_update",
+      message: notif.message,
+      category: notif.title,
+      data: {
+        updatedRide,
+        _id: notifictioncreated._id,
+        rideId: updatedRide?.rideId?._id,
+        profileImage: updatedRide?.requestedBy?.profileImage,
+        requestBy: updatedRide?.requestedBy,
+        requestId: updatedRide?.requestedBy?._id,
+      },
+    });
+
+
     res.status(200).json({
       success: true,
       data: updatedRide,

@@ -6,7 +6,7 @@ const router = express.Router();
 router.get('/:userId', getNotificationById)
 router.patch('/:userId', markAsRead)
 router.post('/', createNotification);
-router.patch('/:id', updateNotificationStatus);
+router.patch('/single/:id', updateNotificationStatus);
 
 
 export default router
