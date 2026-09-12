@@ -55,12 +55,12 @@ export const updateNotificationStatus = async (req, res) => {
 export const updateOptin = async (req, res) => {
   try {
     const { id } = req.params;
-    const { mobileisMessageApproved, messageNumber } = req.body;
+    const { isMessageApproved, messageNumber } = req.body;
 
     const user = await User.findByIdAndUpdate(
       id,
       {
-        mobileisMessageApproved,
+        isMessageApproved,
         messageNumber,
       },
       {
