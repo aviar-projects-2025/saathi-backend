@@ -31,11 +31,14 @@ export const getNotificationById = async (req, res) => {
 
 export const updateNotificationStatus = async (req, res) => {
     try {
+        console.log("Working")
         const { id } = req.params;
         const data = {
             isRead: true
         }
         const updateNotification = await updateNotificationStatusService(id, data);
+
+        console.log(updateNotification,'updateNotification')
 
         res.status(200).json({
             success: true,

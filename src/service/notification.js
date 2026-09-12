@@ -25,6 +25,12 @@ export const buildNotification = ({ type, actorName }) => {
                 message: `${actorName} requested to join your ride`,
             };
 
+        case "ride_request_update":
+            return {
+                title: "Requested Extra Seats",
+                message: `${actorName} requested extra seats`,
+            };
+
         case "request_accepted":
             return {
                 title: "Ride Request Accepted",
