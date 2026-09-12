@@ -66,7 +66,14 @@ const userSchema = new mongoose.Schema({
     },
     imagePublicId: {
         type: String,
-    }
+    },
+    isMessageApproved : {
+        type : Boolean,
+        default : false
+    },
+    messageNumber : {
+        type: String,
+    },
     // city: {
     //   type: String,
     // },
