@@ -21,8 +21,8 @@ const app = express();
 
 app.use(express.json());
 const allowedOrigins = [
-    // "http://localhost:5173",
-    // "https://saathi-frontend-sl8k.vercel.app",
+    "http://localhost:5173",
+    "https://saathi-frontend-sl8k.vercel.app",
     "https://saathirides.net"
 ];
 
