@@ -1,10 +1,10 @@
 import Referral from "../model/referral.js"
-
+import User from "../model/user.js"
 
 export const createReferral = async (req, res) => {
     try {
         const data = { ...req.body }
-        console.log(data)
+        console.log("data....",data)
         const referral = await Referral.create(data)
         console.log(referral,'referral')
         res.status(201).json({
@@ -32,6 +32,7 @@ export const findReferral = async (req, res) => {
         }
 
         const referral = await Referral.findOne({ mobile });
+        const user = await User.findOne({ mobile });
 
         if (!referral) {
             return res.status(404).json({
@@ -41,7 +42,7 @@ export const findReferral = async (req, res) => {
         }
 
         // Already verified
-        if (referral.status === "Verified") {
+        if (referral.status === "Verified" || user?.refApprove === "Approved") {
             return res.status(400).json({
                 success: false,
                 message: "You already have an account with this mobile number",
