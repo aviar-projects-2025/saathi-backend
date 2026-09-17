@@ -4,9 +4,9 @@ import User from "../model/user.js"
 export const createReferral = async (req, res) => {
     try {
         const data = { ...req.body }
-        console.log("data....",data)
+
         const referral = await Referral.create(data)
-        console.log(referral,'referral')
+
         res.status(201).json({
             status: true,
             message: referral
