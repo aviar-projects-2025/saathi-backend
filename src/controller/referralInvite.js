@@ -41,8 +41,11 @@ export const findReferral = async (req, res) => {
             });
         }
 
-        // Already verified
-        if (referral.status === "Verified" || user?.refApprove === "Approved") {
+        // User already has an approved account
+        if (
+            referral.status === "Verified" &&
+            user?.refApprove === "Approved"
+        ) {
             return res.status(400).json({
                 success: false,
                 message: "You already have an account with this mobile number",
@@ -57,6 +60,15 @@ export const findReferral = async (req, res) => {
             return res.status(200).json({
                 success: true,
                 message: "Referral verified successfully",
+                referral,
+            });
+        }
+
+        // Already verified - allow OTP again
+        if (referral.status === "Verified") {
+            return res.status(200).json({
+                success: true,
+                message: "Referral already verified. OTP can be sent again.",
                 referral,
             });
         }
