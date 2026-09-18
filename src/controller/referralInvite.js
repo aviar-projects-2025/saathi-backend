@@ -12,7 +12,7 @@ export const createReferral = async (req, res) => {
         if (existingReferral) {
             return res.status(400).json({
                 status: false,
-                message: "You have already referred this user",
+               message: "This user has already been referred",
             });
         }
 
