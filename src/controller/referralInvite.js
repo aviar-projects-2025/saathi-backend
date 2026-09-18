@@ -4,6 +4,17 @@ import User from "../model/user.js"
 export const createReferral = async (req, res) => {
     try {
         const data = { ...req.body }
+           
+           const existingReferral = await Referral.findOne({
+            mobile: data.mobile,
+        });
+
+        if (existingReferral) {
+            return res.status(400).json({
+                status: false,
+                message: "You have already referred this user",
+            });
+        }
 
         const referral = await Referral.create(data)
 
