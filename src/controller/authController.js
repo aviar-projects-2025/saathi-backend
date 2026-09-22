@@ -110,7 +110,7 @@ const register = async (req, res) => {
 const sendOtp = async (req, res) => {
     try {
         const { mobileNumber } = req.body;
-        console.log(mobileNumber)
+       
         if (!mobileNumber) {
             return res.status(400).json({
                 message: "Mobile number is required",
@@ -199,15 +199,29 @@ const login = async (req, res) => {
 
 const forgotPassword = async (req, res) => {
     try {
-        const { mobile_number: mobile } = req.body;
-
-        if (!mobile || !/^\d{10}$/.test(mobile)) {
+        // Frontend sends: mobileNumber: "+919876543210"
+        const { mobileNumber } = req.body;
+        if (!mobileNumber) {
             return res.status(400).json({
                 success: false,
-                message: "Please enter a valid 10-digit mobile number",
+                message: "Mobile number is required",
             });
         }
 
+        // Remove spaces if any
+        const phoneNumber = mobileNumber.replace(/\s/g, "");
+
+        if (!/^\+\d{11,15}$/.test(phoneNumber)) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid mobile number",
+            });
+        }
+
+        // Get the last 10 digits for DB lookup
+        const mobile = phoneNumber.slice(-10);
+
+    
         // Find user
         const user = await User.findOne({ mobile });
 
@@ -217,9 +231,6 @@ const forgotPassword = async (req, res) => {
                 message: "No account found with this mobile number",
             });
         }
-
-        // Convert to E.164 format
-        const phoneNumber = `+91${mobile}`;
 
         // Send OTP through Twilio Verify
         const verification = await twilioClient.verify.v2
@@ -244,7 +255,6 @@ const forgotPassword = async (req, res) => {
         });
     }
 };
-
 const verifyOTP = async (req, res) => {
     try {
         const { email, otp } = req.body;
@@ -337,6 +347,7 @@ const resetPassword = async (req, res) => {
             newPassword,
         } = req.body;
 
+
         if (!mobileNumber || !token || !newPassword) {
             return res.status(400).json({
                 success: false,
@@ -345,7 +356,9 @@ const resetPassword = async (req, res) => {
             });
         }
 
+        // -----------------------------------
         // Verify JWT
+        // -----------------------------------
         let decoded;
 
         try {
@@ -354,7 +367,10 @@ const resetPassword = async (req, res) => {
                 process.env.JWT_SECRET
             );
         } catch (error) {
-            console.error("JWT error:", error.message);
+            console.error(
+                "JWT verification error:",
+                error.message
+            );
 
             return res.status(401).json({
                 success: false,
@@ -362,7 +378,11 @@ const resetPassword = async (req, res) => {
             });
         }
 
+     
+
+        // -----------------------------------
         // Check token purpose
+        // -----------------------------------
         if (decoded.purpose !== "password_reset") {
             return res.status(401).json({
                 success: false,
@@ -370,17 +390,41 @@ const resetPassword = async (req, res) => {
             });
         }
 
-        // Check mobile number
-        if (decoded.mobileNumber !== mobileNumber) {
+        // -----------------------------------
+        // Normalize mobile number
+        // -----------------------------------
+        const normalizedMobile = mobileNumber
+            .replace(/\D/g, "")
+            .slice(-10);
+
+        console.log(
+            "Mobile from request:",
+            normalizedMobile
+        );
+
+        console.log(
+            "Mobile from token:",
+            decoded.mobileNumber
+        );
+
+        // -----------------------------------
+        // Compare mobile numbers
+        // -----------------------------------
+        if (
+            decoded.mobileNumber !== normalizedMobile
+        ) {
             return res.status(401).json({
                 success: false,
-                message: "Invalid token for this mobile number",
+                message:
+                    "Invalid token for this mobile number",
             });
         }
 
+        // -----------------------------------
         // Find user
+        // -----------------------------------
         const user = await User.findOne({
-            mobile: mobileNumber,
+            mobile: normalizedMobile,
         });
 
         if (!user) {
@@ -390,7 +434,9 @@ const resetPassword = async (req, res) => {
             });
         }
 
-        // Hash password
+        // -----------------------------------
+        // Hash new password
+        // -----------------------------------
         const salt = await bcrypt.genSalt(10);
 
         user.password = await bcrypt.hash(
@@ -406,7 +452,10 @@ const resetPassword = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Reset password error:", error);
+        console.error(
+            "Reset password error:",
+            error
+        );
 
         return res.status(500).json({
             success: false,
@@ -456,10 +505,7 @@ const resendOTP = async (req, res) => {
 
 export const verifyForgotPasswordOtp = async (req, res) => {
     try {
-        const { mobile_number : mobileNumber, otp } = req.body;
-
-        console.log(mobileNumber, otp,'mobileNumber, otp')
-
+        const { mobileNumber, otp } = req.body;
         if (!mobileNumber || !otp) {
             return res.status(400).json({
                 success: false,
@@ -467,10 +513,15 @@ export const verifyForgotPasswordOtp = async (req, res) => {
             });
         }
 
+        // -----------------------------------
+        // Prepare phone number for Twilio
+        // -----------------------------------
         const phoneNumber = mobileNumber.startsWith("+")
             ? mobileNumber
             : `+91${mobileNumber}`;
-
+        // -----------------------------------
+        // Verify OTP using Twilio
+        // -----------------------------------
         const verificationCheck = await twilioClient.verify.v2
             .services(process.env.TWILIO_VERIFY_SID)
             .verificationChecks.create({
@@ -478,7 +529,10 @@ export const verifyForgotPasswordOtp = async (req, res) => {
                 code: otp,
             });
 
-        console.log(verificationCheck,'verificationCheck')
+        console.log(
+            "Verification status:",
+            verificationCheck.status
+        );
 
         if (verificationCheck.status !== "approved") {
             return res.status(400).json({
@@ -487,10 +541,21 @@ export const verifyForgotPasswordOtp = async (req, res) => {
             });
         }
 
-        // Check user
+        // -----------------------------------
+        // Get 10-digit number for MongoDB
+        // -----------------------------------
+        const mobile = phoneNumber.slice(-10);
+
+        console.log("Mobile number for DB:", mobile);
+
+        // -----------------------------------
+        // Find user
+        // -----------------------------------
         const user = await User.findOne({
-            mobile: mobileNumber,
+            mobile: mobile,
         });
+
+        console.log("User:", user);
 
         if (!user) {
             return res.status(404).json({
@@ -499,10 +564,12 @@ export const verifyForgotPasswordOtp = async (req, res) => {
             });
         }
 
+        // -----------------------------------
         // Create password reset token
+        // -----------------------------------
         const resetToken = jwt.sign(
             {
-                mobileNumber: mobileNumber,
+                mobileNumber: mobile,
                 purpose: "password_reset",
             },
             process.env.JWT_SECRET,
@@ -511,7 +578,10 @@ export const verifyForgotPasswordOtp = async (req, res) => {
             }
         );
 
-        console.log("Reset token generated:", resetToken);
+        console.log(
+            "Reset token generated:",
+            resetToken
+        );
 
         return res.status(200).json({
             success: true,
@@ -520,7 +590,10 @@ export const verifyForgotPasswordOtp = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Forgot Password OTP verification error:", error);
+        console.error(
+            "Forgot Password OTP verification error:",
+            error
+        );
 
         return res.status(400).json({
             success: false,
