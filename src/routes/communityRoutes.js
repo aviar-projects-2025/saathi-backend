@@ -1,12 +1,13 @@
 import express from 'express'
 import multer from 'multer'
-import { createPost, getPosts, deletePost, editPost } from '../controller/community.js';
+import { createPost, getPosts, deletePost, editPost, getPostedImage } from '../controller/community.js';
 import { getUploadSignature } from '../../config/cloudinary.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 router.get('/', getPosts)
+router.get('/profile/:userId', getPostedImage)
 router.post('/', upload.single("postImage"), createPost)
 router.delete('/:postId', deletePost)
 // router.put("/:postId", editPost);

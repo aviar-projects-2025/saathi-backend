@@ -1,6 +1,6 @@
 import cloudinary from "../../config/cloudinary.js";
 import streamifier from 'streamifier'
-import { createPostService, getPostsService, deletePostService, editPostService } from "../service/community.js";
+import { createPostService, getPostsService, deletePostService, editPostService, getProfilePostsService } from "../service/community.js";
 import { getLikedPostService, likePostService, unlikePostService } from "../service/likes.js";
 import Community from "../model/community.js";
 
@@ -137,6 +137,36 @@ export const getPosts = async (req, res) => {
   }
 };
 
+export const getPostedImage = async (req, res) => {
+      const { userId } = req.params;
+  try {
+    const page = Math.max(
+      Number(req.query.page) || 1,
+      1
+    );
+
+    const limit = Math.min(
+      Number(req.query.limit) || 10,
+      50
+    );
+ 
+    const result = await getProfilePostsService(userId, page, limit);
+
+    res.status(200).json({
+      success: true,
+      data: result.posts,
+      pagination: result.pagination,
+    });
+
+  } catch (error) {
+    console.error("Get community posts error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 export const likePost = async (req, res) => {
     try {
         const { postId, userId } = req.params;

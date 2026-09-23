@@ -66,7 +66,34 @@ export const getPostsService = async (page = 1, limit = 10) => {
     },
   };
 };
+export const getProfilePostsService = async (
+  authorId,
+  page = 1,
+  limit = 12
+) => {
+  const skip = (page - 1) * limit;
+  
+  const posts = await Community.find({ authorId })
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
 
+  const total = await Community.countDocuments({ authorId });
+
+  return {
+    posts: posts.map((post) => ({
+      ...post,
+      commentCount: post.comments?.length || 0,
+    })),
+    pagination: {
+      page,
+      limit,
+      total,
+      hasMore: skip + posts.length < total,
+    },
+  };
+};
 
 export const editPostService = async (
   postId,
