@@ -5,6 +5,7 @@ import {
     createRideService,
     deleteRideService,
     getAllRideService,
+    getMyRideCountsService,
     updateRideService,
 } from '../service/ride.js'
 import Ride from "../model/ride.js";
@@ -96,8 +97,28 @@ export const getRides = async (req, res) => {
     });
   }
 };
-// Update
 
+export const getMyRideCounts = async (req, res) => {
+  try {
+    const counts = await getMyRideCountsService({
+      userId: req.user.id,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: counts,
+    });
+  } catch (error) {
+    console.error("GET MY RIDE COUNTS ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Update
 export const editRide = async (req, res) => {
     try {
         const { id } = req.params;

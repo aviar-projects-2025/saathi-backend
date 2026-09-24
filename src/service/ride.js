@@ -607,6 +607,142 @@ export const getAllRideService = async ({
   };
 };
 
+
+export const getMyRideCountsService = async ({
+  userId,
+}) => {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+
+  const now = new Date();
+
+  // =====================================================
+  // GET ACCEPTED BOOKED RIDE IDS
+  // =====================================================
+
+  const acceptedRideIds = await BookRide.find({
+    requestedBy: userObjectId,
+    status: "ACCEPTED",
+  }).distinct("rideId");
+
+  // =====================================================
+  // CURRENT
+  // =====================================================
+
+  const currentCount = await Ride.countDocuments({
+    $and: [
+      {
+        $or: [
+          {
+            createdBy: userObjectId,
+          },
+          {
+            _id: {
+              $in: acceptedRideIds,
+            },
+          },
+        ],
+      },
+
+      {
+        startTime: {
+          $lte: now,
+        },
+      },
+
+      {
+        travelStatus: {
+          $nin: [
+            "Completed",
+            "Cancelled",
+          ],
+        },
+      },
+    ],
+  });
+
+  // =====================================================
+  // UPCOMING
+  // =====================================================
+
+  const upcomingCount = await Ride.countDocuments({
+    $or: [
+      {
+        createdBy: userObjectId,
+
+        startTime: {
+          $gt: now,
+        },
+
+        travelStatus: {
+          $nin: [
+            "Completed",
+            "Cancelled",
+          ],
+        },
+      },
+
+      {
+        _id: {
+          $in: acceptedRideIds,
+        },
+
+        startTime: {
+          $gt: now,
+        },
+      },
+    ],
+  });
+
+  // =====================================================
+  // MY POSTS
+  // =====================================================
+
+  const postsCount = await Ride.countDocuments({
+    createdBy: userObjectId,
+  });
+
+  // =====================================================
+  // HISTORY
+  // =====================================================
+
+  const historyCount = await Ride.countDocuments({
+    $and: [
+      {
+        $or: [
+          {
+            createdBy: userObjectId,
+          },
+          {
+            _id: {
+              $in: acceptedRideIds,
+            },
+          },
+        ],
+      },
+
+      {
+        travelStatus: {
+          $in: [
+            "Completed",
+            "Cancelled",
+          ],
+        },
+      },
+    ],
+  });
+
+  // =====================================================
+  // RETURN
+  // =====================================================
+
+  return {
+    current: currentCount,
+    upcoming: upcomingCount,
+    posts: postsCount,
+    history: historyCount,
+  };
+};
+
 // Get single Ride
 export const getRideById = async (id) => {
   return await Ride.findById(id);
