@@ -1,9 +1,10 @@
 import express from 'express'
 import { createRide, getRides, editRide, deleteRide , checkActiveRide, cancelRide } from '../controller/ride.js'
+import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
-router.get("/get", getRides);
+router.get("/get",verifyToken, getRides);
 router.post("/", createRide);
 router.patch("/edit/:id", editRide);
 router.patch("/cancelride/:id", cancelRide);

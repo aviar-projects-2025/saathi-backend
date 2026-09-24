@@ -48,7 +48,6 @@ app.use(
   })
 );
 
-
 app.use("/api/v1/bookride", bookrideRouter)
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/rides", rideRoutes)

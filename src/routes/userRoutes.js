@@ -1,5 +1,5 @@
 import express from 'express'
-import { createUser, getUsers, loginUser, getSingleUser, updateProfile, changePassword, getTopRiders, getMe } from '../controller/user.js'
+import { createUser, getUsers, loginUser, getSingleUser, updateProfile, changePassword, getTopRiders, getMe, getPeopleNearby } from '../controller/user.js'
 import multer from 'multer';
 import { verifyToken } from '../middleware/auth.js';
 import { getUploadSignature } from '../../config/cloudinary.js';
@@ -17,6 +17,8 @@ router.patch("/change-password/:userId", changePassword);
 
 //login route
 router.post("/login", loginUser);
+router.get("/nearby/user/:id", getPeopleNearby);
+
 // router.post('/update/:userId', upload.single("profileImage"), updateProfile)
 router.post('/update/:userId', updateProfile)
 

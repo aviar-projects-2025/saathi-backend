@@ -242,6 +242,53 @@ export const loginUser = async (req, res) => {
   }
 };
 
+export const getPeopleNearby = async (req, res) => {
+  try {
+    const { id : currentUserId } = req.params
+    
+    // Get logged-in user's ZIP/PIN code
+    const currentUser = await User.findById(currentUserId).select("zipcode");
+
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (!currentUser.zipcode) {
+      return res.status(400).json({
+        success: false,
+        message: "Please add your ZIP/PIN code to your profile",
+      });
+    }
+
+    // Find other users with the same ZIP/PIN code
+    const people = await User.find({
+      _id: { $ne: currentUserId },
+      zipcode: currentUser.zipcode,
+    })
+      .select(
+        "_id firstName lastName profileImage profession bio city state isVerified"
+      )
+      .sort({ firstName: 1 });
+
+    return res.status(200).json({
+      success: true,
+      zipcode: currentUser.zipcode,
+      count: people.length,
+      data: people,
+    });
+  } catch (error) {
+    console.error("Error fetching people nearby:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch people nearby",
+    });
+  }
+};
+
 const uploadToCloudinary = (buffer) => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -258,7 +305,6 @@ const uploadToCloudinary = (buffer) => {
     streamifier.createReadStream(buffer).pipe(stream);
   });
 };
-
 
 export const changePassword = async (req, res) => {
 
@@ -415,7 +461,6 @@ export const updateProfile = async (req, res) => {
   }
 };
 
-
 export const getTopRiders = async (req, res) => {
   try {
     const limit = Number(req.query.limit) || 5;
@@ -432,7 +477,6 @@ export const getTopRiders = async (req, res) => {
     });
   }
 };
-
 
 // controller
 export const getMe = async (req, res) => {

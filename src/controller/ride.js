@@ -57,20 +57,45 @@ export const checkActiveRide = async (req, res) => {
 };
 
 export const getRides = async (req, res) => {
-    try {
-        const rides = await getAllRideService();
-        res.status(200).json({
-            success: true,
-            totalRides: rides.length,
-            data: rides,
-        })
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        })
-    }
-}
+  try {
+    const result = await getAllRideService({
+      type: req.query.type || "find",
+      category: req.query.category,
+
+      // Always take user from JWT
+      userId: req.user.id,
+
+      // Find Rides filters
+      searchFrom: req.query.searchFrom,
+      searchDestination: req.query.searchDestination,
+      search: req.query.search,
+      transportMode: req.query.transportMode,
+      gender: req.query.gender,
+      fuelSharing: req.query.fuelSharing,
+      language: req.query.language,
+
+      // Pagination
+      page: req.query.page || 1,
+      limit: req.query.limit || 10,
+    });
+
+    return res.status(200).json({
+      success: true,
+      totalRides: result.totalRides,
+      page: result.page,
+      limit: result.limit,
+      hasMore: result.hasMore,
+      data: result.rides,
+    });
+  } catch (error) {
+    console.error("GET RIDES ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 // Update
 
 export const editRide = async (req, res) => {
