@@ -52,6 +52,7 @@ app.use("/api/v1/bookride", bookrideRouter)
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/rides", rideRoutes)
 app.use("/api/v1/community", communityRoutes)
+app.use("/api/v1/post-images", communityRoutes)
 app.use("/api/v1/referrals", referralRoutes)
 app.use("/api/v1/likes", likeRoutes)
 app.use("/api/v1/community/likes", likeRoutes)
