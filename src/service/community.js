@@ -72,7 +72,7 @@ export const getProfilePostsService = async (
   limit = 12
 ) => {
   const skip = (page - 1) * limit;
-  
+
   const posts = await Community.find({ authorId })
     .sort({ createdAt: -1 })
     .skip(skip)
@@ -86,6 +86,7 @@ export const getProfilePostsService = async (
       ...post,
       commentCount: post.comments?.length || 0,
     })),
+
     pagination: {
       page,
       limit,

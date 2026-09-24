@@ -108,64 +108,77 @@ export const createPost = async (req, res) => {
 }
 
 export const getPosts = async (req, res) => {
-  try {
-    const page = Math.max(
-      Number(req.query.page) || 1,
-      1
-    );
+    try {
+        const page = Math.max(
+            Number(req.query.page) || 1,
+            1
+        );
 
-    const limit = Math.min(
-      Number(req.query.limit) || 10,
-      50
-    );
+        const limit = Math.min(
+            Number(req.query.limit) || 10,
+            50
+        );
 
-    const result = await getPostsService(page, limit);
+        const result = await getPostsService(page, limit);
 
-    res.status(200).json({
-      success: true,
-      data: result.posts,
-      pagination: result.pagination,
-    });
+        res.status(200).json({
+            success: true,
+            data: result.posts,
+            pagination: result.pagination,
+        });
 
-  } catch (error) {
-    console.error("Get community posts error:", error);
+    } catch (error) {
+        console.error("Get community posts error:", error);
 
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
 };
 
 export const getPostedImage = async (req, res) => {
-      const { userId } = req.params;
-  try {
-    const page = Math.max(
-      Number(req.query.page) || 1,
-      1
-    );
+    const { userId } = req.params;
 
-    const limit = Math.min(
-      Number(req.query.limit) || 10,
-      50
-    );
- 
-    const result = await getProfilePostsService(userId, page, limit);
+    try {
+        const page = Math.max(
+            Number(req.query.page) || 1,
+            1
+        );
 
-    res.status(200).json({
-      success: true,
-      data: result.posts,
-      pagination: result.pagination,
-    });
+        const limit = Math.min(
+            Number(req.query.limit) || 10,
+            50
+        );
 
-  } catch (error) {
-    console.error("Get community posts error:", error);
+        const result = await getProfilePostsService(
+            userId,
+            page,
+            limit
+        );
 
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
+        return res.status(200).json({
+            success: true,
+            data: result.posts,
+            pagination: {
+                currentPage: result.pagination.page,
+                limit: result.pagination.limit,
+                totalCount: result.pagination.total,
+                hasMore: result.pagination.hasMore,
+                totalPages: Math.ceil(
+                    result.pagination.total / result.pagination.limit
+                ),
+            },
+        });
+
+    } catch (error) {
+        console.error("Get community posts error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
 };
 export const likePost = async (req, res) => {
     try {
