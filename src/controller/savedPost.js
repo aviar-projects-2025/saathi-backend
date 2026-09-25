@@ -35,11 +35,36 @@ export const getPostById = async (req, res) => {
     try {
         const { userId } = req.params;
 
-        const savedPosts = await SavedPost.find({ userId }).populate("postId");
+        // Pagination values
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 12;
+
+        const skip = (page - 1) * limit;
+
+        // Total saved posts
+        const totalPosts = await SavedPost.countDocuments({ userId });
+
+        // Get paginated saved posts
+        const savedPosts = await SavedPost.find({ userId })
+            .populate("postId")
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        const totalPages = Math.ceil(totalPosts / limit);
 
         res.status(200).json({
             status: true,
-            savedPosts
+            savedPosts,
+
+            pagination: {
+                currentPage: page,
+                limit,
+                totalPosts,
+                totalPages,
+                hasNextPage: page < totalPages,
+                hasPreviousPage: page > 1
+            }
         });
 
     } catch (error) {
