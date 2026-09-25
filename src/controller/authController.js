@@ -218,9 +218,9 @@ const forgotPassword = async (req, res) => {
             });
         }
 
-        // Get the last 10 digits for DB lookup
-        const mobile = phoneNumber.slice(-10);
+        const mobile = phoneNumber;
 
+        // console.log(mobile)
     
         // Find user
         const user = await User.findOne({ mobile });
@@ -377,9 +377,6 @@ const resetPassword = async (req, res) => {
                 message: "Invalid or expired token",
             });
         }
-
-     
-
         // -----------------------------------
         // Check token purpose
         // -----------------------------------
@@ -394,18 +391,7 @@ const resetPassword = async (req, res) => {
         // Normalize mobile number
         // -----------------------------------
         const normalizedMobile = mobileNumber
-            .replace(/\D/g, "")
-            .slice(-10);
 
-        console.log(
-            "Mobile from request:",
-            normalizedMobile
-        );
-
-        console.log(
-            "Mobile from token:",
-            decoded.mobileNumber
-        );
 
         // -----------------------------------
         // Compare mobile numbers
@@ -529,10 +515,6 @@ export const verifyForgotPasswordOtp = async (req, res) => {
                 code: otp,
             });
 
-        console.log(
-            "Verification status:",
-            verificationCheck.status
-        );
 
         if (verificationCheck.status !== "approved") {
             return res.status(400).json({
@@ -544,9 +526,8 @@ export const verifyForgotPasswordOtp = async (req, res) => {
         // -----------------------------------
         // Get 10-digit number for MongoDB
         // -----------------------------------
-        const mobile = phoneNumber.slice(-10);
+        const mobile = phoneNumber;
 
-        console.log("Mobile number for DB:", mobile);
 
         // -----------------------------------
         // Find user
@@ -555,7 +536,6 @@ export const verifyForgotPasswordOtp = async (req, res) => {
             mobile: mobile,
         });
 
-        console.log("User:", user);
 
         if (!user) {
             return res.status(404).json({
@@ -578,10 +558,10 @@ export const verifyForgotPasswordOtp = async (req, res) => {
             }
         );
 
-        console.log(
-            "Reset token generated:",
-            resetToken
-        );
+        // console.log(
+        //     "Reset token generated:",
+        //     resetToken
+        // );
 
         return res.status(200).json({
             success: true,
