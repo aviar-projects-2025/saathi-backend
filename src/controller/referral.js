@@ -120,13 +120,13 @@ export const sendReferralLink = async (req, res) => {
         // const referralLink = `https://saathirides.net/register?ref=${referralCode}`;
         const referralLink = shareLink;
 
-
-
         const message = await twilioClient.messages.create({
             body: `${referrerName} has invited you to join Saathi Rides.
-                    Connect with trusted community members for rides and travel companionship.
-                    Join Saathi Rides: ${shareLink}
-                    - Saathi Rides`,
+
+Connect with trusted community members for rides and travel companionship.
+
+Join Saathi Rides: ${shareLink}
+- Saathi Rides`,
             messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
             to: phoneNumber,
         });
