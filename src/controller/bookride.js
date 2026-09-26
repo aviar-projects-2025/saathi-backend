@@ -180,6 +180,8 @@ const statusBookride = async (req, res) => {
     const { requestId } = req.params;
     const { type: statusType } = req.query;
 
+    console.log(statusType,'statusType')
+
     if (!["Approve", "Reject", "Cancel"].includes(statusType)) {
       return res.status(400).json({
         success: false,
@@ -187,234 +189,108 @@ const statusBookride = async (req, res) => {
       });
     }
 
-    // ==================================================
-    // GET CURRENT BOOKING REQUEST
-    // ==================================================
-    const bookingRequest = await Bookride.findById(requestId);
+    const notifType =
+      statusType === "Approve"
+        ? "request_accepted"
+        : statusType === "Cancel"
+        ? "request_cancelled"
+        : "request_rejected";
 
-    if (!bookingRequest) {
+    // 🔹 Your existing logic (this already reduces seat 👍)
+    const rides = await statusBookRide(requestId, statusType);
+
+
+    if (!rides) {
       return res.status(404).json({
         success: false,
-        message: "Booking request not found",
+        message: "Request not found",
       });
     }
-
-    // ==================================================
-    // GET RIDE
-    // ==================================================
-    const ride = await Ride.findById(bookingRequest.rideId);
-
-    if (!ride) {
-      return res.status(404).json({
-        success: false,
-        message: "Ride not found",
-      });
-    }
-
-    // ==================================================
-    // CURRENT REQUEST VALUES
-    // ==================================================
-    const previousStatus = bookingRequest.status;
-    const currentApprovedSeats = Number(bookingRequest.approvedSeats || 0);
-    const currentPendingSeats = Number(bookingRequest.pendingReqSeats || 0);
-    const currentRejectedSeats = Number(bookingRequest.rejectedSeats || 0);
-
-    // ==================================================
-    // PREVENT DUPLICATE REJECT / CANCEL
-    // ==================================================
-    if (previousStatus === "REJECTED" && statusType === "Reject") {
-      return res.status(400).json({
-        success: false,
-        message: "Request is already rejected",
-      });
-    }
-
-    if (previousStatus === "CANCELLED" && statusType === "Cancel") {
-      return res.status(400).json({
-        success: false,
-        message: "Request is already cancelled",
-      });
-    }
-
-    const hasPendingSeats = currentPendingSeats > 0;
 
     if (statusType === "Approve") {
-      if (!hasPendingSeats) {
-        return res.status(400).json({
-          success: false,
-          message: "No pending seats available to approve",
+      const ride = await Ride.findById(rides.rideId);
+
+
+      if (ride && ride.availableSeats === 0) {
+        const pendingRequests = await Bookride.find({
+          rideId: ride._id,
+          status: "PENDING",
         });
-      }
 
-      const seatsToApprove = currentPendingSeats;
-      const availableSeats = Number(ride.availableSeats || 0);
-
-      if (availableSeats < seatsToApprove) {
-        return res.status(400).json({
-          success: false,
-          message: "Not enough available seats",
-        });
-      }
-
-      bookingRequest.approvedSeats = currentApprovedSeats + seatsToApprove;
-      bookingRequest.pendingReqSeats = 0;
-      bookingRequest.seatsRequested = Math.max(bookingRequest.approvedSeats, 1);
-
-      const pendingMembers = bookingRequest.pendingMembers || [];
-      bookingRequest.members = [
-        ...(bookingRequest.members || []),
-        ...pendingMembers,
-      ];
-      bookingRequest.pendingMembers = [];
-      bookingRequest.status = "ACCEPTED";
-
-      await bookingRequest.save();
-
-      ride.availableSeats = availableSeats - seatsToApprove;
-      if (ride.status !== "CANCELLED" && ride.status !== "CLOSED") {
-        ride.status = ride.availableSeats > 0 ? "OPEN" : "FULL";
-      }
-      await ride.save();
-    }
-
-    // ==================================================
-    // REJECT
-    // ==================================================
-    else if (statusType === "Reject") {
-      if (hasPendingSeats) {
-        const seatsToReject = currentPendingSeats;
-
-        bookingRequest.rejectedSeats = currentRejectedSeats + seatsToReject;
-        bookingRequest.pendingReqSeats = 0;
-        bookingRequest.pendingMembers = [];
-
-        bookingRequest.status =
-          currentApprovedSeats > 0 ? "ACCEPTED" : "REJECTED";
-
-        bookingRequest.seatsRequested = Math.max(
-          currentApprovedSeats + seatsToReject,
-          1,
+        await Bookride.updateMany(
+          {
+            rideId: ride._id,
+            status: "PENDING",
+          },
+          {
+            $set: { status: "REJECTED" },
+          }
         );
 
-        await bookingRequest.save();
+        for (const req of pendingRequests) {
+          const notif = buildNotification({ type: "request_rejected" });
 
-        ride.rejectedSeats = Number(ride.rejectedSeats || 0) + seatsToReject;
-        await ride.save();
-      } else if (previousStatus === "ACCEPTED" && currentApprovedSeats > 0) {
-        const seatsToReject = currentApprovedSeats;
+          await createNotificationService({
+            userId: req.requestedBy,
+            actorId: req.rideOwner,
+            type: "request_rejected",
+            ...notif,
+            data: {
+              rideId: req.rideId,
+              requestId: req._id,
+            },
+          });
 
-        bookingRequest.approvedSeats = 0;
-        bookingRequest.rejectedSeats = currentRejectedSeats + seatsToReject;
-        bookingRequest.pendingReqSeats = 0;
-        bookingRequest.members = [];
-        bookingRequest.pendingMembers = [];
-        bookingRequest.seatsRequested = Math.max(seatsToReject, 1);
-        bookingRequest.status = "REJECTED";
-
-        await bookingRequest.save();
-
-        ride.availableSeats = Number(ride.availableSeats || 0) + seatsToReject;
-        ride.rejectedSeats = Number(ride.rejectedSeats || 0) + seatsToReject;
-
-        if (ride.status !== "CANCELLED" && ride.status !== "CLOSED") {
-          ride.status = ride.availableSeats > 0 ? "OPEN" : "FULL";
+          emitNotification(req.requestedBy.toString(), {
+            type: "request_rejected",
+            message: notif.message,
+            data: {
+              rideId: req.rideId,
+              requestId: req._id,
+            },
+          });
         }
-        await ride.save();
-      } else {
-        return res.status(400).json({
-          success: false,
-          message: `Cannot reject request with status ${previousStatus}`,
-        });
-      }
-    } else if (statusType === "Cancel") {
-      // Same principle as Reject: pending seats first.
-      if (hasPendingSeats) {
-        const seatsToCancel = currentPendingSeats;
-
-        bookingRequest.pendingReqSeats = 0;
-        bookingRequest.pendingMembers = [];
-        bookingRequest.status =
-          currentApprovedSeats > 0 ? "ACCEPTED" : "CANCELLED";
-        bookingRequest.seatsRequested = Math.max(
-          currentApprovedSeats + seatsToCancel,
-          1,
-        );
-
-        await bookingRequest.save();
-      } else if (previousStatus === "ACCEPTED" && currentApprovedSeats > 0) {
-        const seatsToReturn = currentApprovedSeats;
-
-        bookingRequest.approvedSeats = 0;
-        bookingRequest.pendingReqSeats = 0;
-        bookingRequest.members = [];
-        bookingRequest.pendingMembers = [];
-        bookingRequest.seatsRequested = Math.max(seatsToReturn, 1);
-        bookingRequest.status = "CANCELLED";
-
-        await bookingRequest.save();
-
-        ride.availableSeats = Number(ride.availableSeats || 0) + seatsToReturn;
-        if (ride.status !== "CANCELLED" && ride.status !== "CLOSED") {
-          ride.status = ride.availableSeats > 0 ? "OPEN" : "FULL";
-        }
-        await ride.save();
-      } else {
-        return res.status(400).json({
-          success: false,
-          message: `Cannot cancel request with status ${previousStatus}`,
-        });
       }
     }
 
-    // ==================================================
-    // CALCULATE TOTALS FOR SAME USER + SAME RIDE
-    // ==================================================
-    const summary = await Bookride.aggregate([
-      {
-        $match: {
-          requestedBy: bookingRequest.requestedBy,
-          rideId: bookingRequest.rideId,
-        },
+    const notif = buildNotification({ type: notifType });
+
+    const notifictioncreated = await createNotificationService({
+      userId: rides.requestedBy,
+      actorId: rides.rideOwner,
+      type: notifType,
+      ...notif,
+      data: {
+        rideId: rides.rideId,
+        requestId: rides._id,
       },
-      {
-        $group: {
-          _id: null,
-          approvedSeats: { $sum: { $ifNull: ["$approvedSeats", 0] } },
-          rejectedSeats: { $sum: { $ifNull: ["$rejectedSeats", 0] } },
-          pendingSeats: { $sum: { $ifNull: ["$pendingReqSeats", 0] } },
-        },
+    });
+
+    emitNotification(rides.requestedBy.toString(), {
+      type: notifType,
+      message: notif.message,
+      category: notif.title,
+      data: {
+        _id: notifictioncreated._id,
+        // profileImage: populatedBooking?.requestedBy?.profileImage,
+        rideId: rides.rideId,
+        requestId: rides._id,
       },
-    ]);
+    });
 
-    const totalSummary = summary[0] || {
-      approvedSeats: 0,
-      rejectedSeats: 0,
-      pendingSeats: 0,
-    };
-
-    const updatedBookingRequest = await Bookride.findById(requestId);
-
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message:
         statusType === "Approve"
-          ? "Request approved successfully"
-          : statusType === "Reject"
-            ? "Request rejected successfully"
-            : "Request cancelled successfully",
-      data: {
-        request: updatedBookingRequest,
-        approvedSeats: Number(totalSummary.approvedSeats || 0),
-        rejectedSeats: Number(totalSummary.rejectedSeats || 0),
-        pendingSeats: Number(totalSummary.pendingSeats || 0),
-      },
+          ? "Ride request accepted"
+          : "Ride request rejected",
+      data: rides,
     });
+
   } catch (error) {
-    console.error("statusBookride error:", error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
-      message: "Failed to update booking status",
-      error: error.message,
+      message: error.message,
     });
   }
 };
