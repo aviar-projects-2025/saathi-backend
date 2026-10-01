@@ -84,7 +84,8 @@ export const getProfilePostsService = async (
   return {
     posts: posts.map((post) => ({
       ...post,
-      commentCount: post.comments?.length || 0,
+      commentCount: post?.comments?.length || 0,
+      description: post?.description
     })),
 
     pagination: {
