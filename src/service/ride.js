@@ -22,13 +22,8 @@ const fetchMyRideCategory = async ({
   skip,
   sort,
 }) => {
-  console.log(
-    "MY RIDES QUERY:",
-    JSON.stringify(query, null, 2)
-  );
 
-  const totalRides =
-    await Ride.countDocuments(query);
+  const totalRides = await Ride.countDocuments(query);
 
   const rides = await Ride.find(query)
     .populate(
@@ -44,10 +39,10 @@ const fetchMyRideCategory = async ({
     totalRides,
     page: pageNumber,
     limit: limitNumber,
-    hasMore:
-      skip + rides.length < totalRides,
+    hasMore: skip + rides.length < totalRides,
   };
 };
+
 
 const getMyRidesCategory = async ({
   category,
@@ -68,14 +63,8 @@ const getMyRidesCategory = async ({
   ];
 
   if (!allowedCategories.includes(category)) {
-    throw new Error(
-      "Invalid My Rides category"
-    );
+    throw new Error("Invalid My Rides category");
   }
-
-  // =====================================================
-  // MY ACCEPTED BOOKINGS
-  // =====================================================
 
   let acceptedRideIds = [];
 
@@ -84,49 +73,27 @@ const getMyRidesCategory = async ({
     category === "upcoming" ||
     category === "history"
   ) {
-    acceptedRideIds =
-      await BookRide.find({
-        requestedBy: userObjectId,
-        status: "ACCEPTED",
-      }).distinct("rideId");
+    acceptedRideIds = await BookRide.find({
+      requestedBy: userObjectId,
+      status: "ACCEPTED",
+    }).distinct("rideId");
   }
-
-  // =====================================================
-  // POSTS
-  // =====================================================
 
   if (category === "posts") {
     const query = {
       createdBy: userObjectId,
     };
 
-    const totalRides =
-      await Ride.countDocuments(query);
-
-    const rides = await Ride.find(query)
-      .populate(
-        "createdBy",
-        "firstName lastName profileImage zipcode"
-      )
-      .sort({
+    return await fetchMyRideCategory({
+      query,
+      pageNumber,
+      limitNumber,
+      skip,
+      sort: {
         startTime: -1,
-      })
-      .skip(skip)
-      .limit(limitNumber);
-
-    return {
-      rides,
-      totalRides,
-      page: pageNumber,
-      limit: limitNumber,
-      hasMore:
-        skip + rides.length < totalRides,
-    };
+      },
+    });
   }
-
-  // =====================================================
-  // CURRENT
-  // =====================================================
 
   if (category === "current") {
     const now = new Date();
@@ -154,6 +121,57 @@ const getMyRidesCategory = async ({
 
         {
           travelStatus: {
+            $in: [
+              "Waiting",
+              "Started",
+              "Ongoing",
+            ],
+          },
+        },
+      ],
+    };
+
+    return await fetchMyRideCategory({
+      query,
+      pageNumber,
+      limitNumber,
+      skip,
+      sort: {
+        startTime: 1,
+      },
+    });
+  }
+
+
+  if (category === "upcoming") {
+    const now = new Date();
+
+    const query = {
+      $and: [
+
+        {
+          $or: [
+            {
+              createdBy: userObjectId,
+            },
+            {
+              _id: {
+                $in: acceptedRideIds,
+              },
+            },
+          ],
+        },
+
+
+        {
+          startTime: {
+            $gt: now,
+          },
+        },
+
+
+        {
+          travelStatus: {
             $nin: [
               "Completed",
               "Cancelled",
@@ -174,83 +192,66 @@ const getMyRidesCategory = async ({
     });
   }
 
-  // =====================================================
-  // UPCOMING
-  // =====================================================
+  if (category === "history") {
 
-  if (category === "upcoming") {
-    const now = new Date();
+    const endedRequestRideIds = await BookRide.find({
+      requestedBy: userObjectId,
+
+      status: {
+        $in: [
+          "CANCELLED",
+          "REJECTED",
+          "AUTO_REJECTED",
+        ],
+      },
+    }).distinct("rideId");
+
 
     const query = {
-      $and: [
+      $or: [
+
+
         {
-          $or: [
+          $and: [
             {
               createdBy: userObjectId,
+            },
 
-              startTime: {
-                $gt: now,
-              },
-
+            {
               travelStatus: {
-                $nin: [
+                $in: [
                   "Completed",
                   "Cancelled",
                 ],
               },
             },
-
-            {
-              _id: {
-                $in: acceptedRideIds,
-              },
-
-              startTime: {
-                $gt: now,
-              },
-            },
           ],
         },
-      ],
-    };
 
-    return await fetchMyRideCategory({
-      query,
-      pageNumber,
-      limitNumber,
-      skip,
-      sort: {
-        startTime: 1,
-      },
-    });
-  }
 
-  // =====================================================
-  // HISTORY
-  // =====================================================
-
-  if (category === "history") {
-    const query = {
-      $and: [
         {
-          $or: [
-            {
-              createdBy: userObjectId,
-            },
+          $and: [
             {
               _id: {
                 $in: acceptedRideIds,
               },
             },
+
+            {
+              travelStatus: {
+                $in: [
+                  "Completed",
+                  "Cancelled",
+                ],
+              },
+            },
           ],
         },
 
+
         {
-          travelStatus: {
-            $in: [
-              "Completed",
-              "Cancelled",
-            ],
+          _id: {
+            $in: endedRequestRideIds,
           },
         },
       ],
@@ -570,15 +571,6 @@ export const getAllRideService = async ({
     $and: conditions,
   };
 
-  console.log(
-    "FIND RIDES QUERY:",
-    JSON.stringify(query, null, 2)
-  );
-
-  // =====================================================
-  // TOTAL
-  // =====================================================
-
   const totalRides =
     await Ride.countDocuments(query);
 
@@ -616,7 +608,7 @@ export const getMyRideCountsService = async ({
   const now = new Date();
 
   // =====================================================
-  // GET ACCEPTED BOOKED RIDE IDS
+  // ACCEPTED BOOKINGS
   // =====================================================
 
   const acceptedRideIds = await BookRide.find({
@@ -625,7 +617,43 @@ export const getMyRideCountsService = async ({
   }).distinct("rideId");
 
   // =====================================================
+  // ENDED REQUESTS
+  // =====================================================
+  //
+  // These requests should appear in History even though
+  // the Ride itself may not be Completed/Cancelled.
+  //
+  // =====================================================
+
+  const endedRequestRideIds = await BookRide.find({
+    requestedBy: userObjectId,
+    status: {
+      $in: [
+        "CANCELLED",
+        "REJECTED",
+        "AUTO_REJECTED",
+      ],
+    },
+  }).distinct("rideId");
+
+  // =====================================================
   // CURRENT
+  // =====================================================
+  //
+  // Current:
+  //
+  // - My ride
+  // OR
+  // - Accepted passenger ride
+  //
+  // AND
+  //
+  // startTime <= now
+  //
+  // AND
+  //
+  // Waiting / Started / Ongoing
+  //
   // =====================================================
 
   const currentCount = await Ride.countDocuments({
@@ -651,9 +679,10 @@ export const getMyRideCountsService = async ({
 
       {
         travelStatus: {
-          $nin: [
-            "Completed",
-            "Cancelled",
+          $in: [
+            "Waiting",
+            "Started",
+            "Ongoing",
           ],
         },
       },
@@ -663,49 +692,22 @@ export const getMyRideCountsService = async ({
   // =====================================================
   // UPCOMING
   // =====================================================
+  //
+  // Future rides:
+  //
+  // - My ride
+  // OR
+  // - Accepted passenger ride
+  //
+  // AND
+  //
+  // startTime > now
+  //
+  // AND not Completed / Cancelled
+  //
+  // =====================================================
 
   const upcomingCount = await Ride.countDocuments({
-    $or: [
-      {
-        createdBy: userObjectId,
-
-        startTime: {
-          $gt: now,
-        },
-
-        travelStatus: {
-          $nin: [
-            "Completed",
-            "Cancelled",
-          ],
-        },
-      },
-
-      {
-        _id: {
-          $in: acceptedRideIds,
-        },
-
-        startTime: {
-          $gt: now,
-        },
-      },
-    ],
-  });
-
-  // =====================================================
-  // MY POSTS
-  // =====================================================
-
-  const postsCount = await Ride.countDocuments({
-    createdBy: userObjectId,
-  });
-
-  // =====================================================
-  // HISTORY
-  // =====================================================
-
-  const historyCount = await Ride.countDocuments({
     $and: [
       {
         $or: [
@@ -721,11 +723,100 @@ export const getMyRideCountsService = async ({
       },
 
       {
+        startTime: {
+          $gt: now,
+        },
+      },
+
+      {
         travelStatus: {
-          $in: [
+          $nin: [
             "Completed",
             "Cancelled",
           ],
+        },
+      },
+    ],
+  });
+
+  // =====================================================
+  // MY POSTS
+  // =====================================================
+  //
+  // Every ride created by me.
+  //
+  // =====================================================
+
+  const postsCount = await Ride.countDocuments({
+    createdBy: userObjectId,
+  });
+
+  // =====================================================
+  // HISTORY
+  // =====================================================
+  //
+  // History:
+  //
+  // 1. My Completed rides
+  // 2. My Cancelled rides
+  // 3. Accepted passenger rides that completed/cancelled
+  // 4. My CANCELLED requests
+  // 5. My REJECTED requests
+  // 6. My AUTO_REJECTED requests
+  //
+  // =====================================================
+
+  const historyCount = await Ride.countDocuments({
+    $or: [
+      // -------------------------------------------------
+      // MY COMPLETED / CANCELLED RIDES
+      // -------------------------------------------------
+
+      {
+        $and: [
+          {
+            createdBy: userObjectId,
+          },
+          {
+            travelStatus: {
+              $in: [
+                "Completed",
+                "Cancelled",
+              ],
+            },
+          },
+        ],
+      },
+
+      // -------------------------------------------------
+      // ACCEPTED PASSENGER RIDES
+      // -------------------------------------------------
+
+      {
+        $and: [
+          {
+            _id: {
+              $in: acceptedRideIds,
+            },
+          },
+          {
+            travelStatus: {
+              $in: [
+                "Completed",
+                "Cancelled",
+              ],
+            },
+          },
+        ],
+      },
+
+      // -------------------------------------------------
+      // MY ENDED REQUESTS
+      // -------------------------------------------------
+
+      {
+        _id: {
+          $in: endedRequestRideIds,
         },
       },
     ],
