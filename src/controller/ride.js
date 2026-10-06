@@ -15,10 +15,26 @@ import User from "../model/user.js";
 // controller
 export const createRide = async (req, res) => {
     try {
-        const ride = await createRideService(req.body);
+        const userId = req.user?.userId || req.user?.id;
+
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: "User authentication information is missing",
+            });
+        }
+
+        const rideData = {
+            ...req.body,
+            createdBy: userId,
+        };
+
+        const ride = await createRideService(rideData);
 
         if (ride) {
-            const newRideUpdate = buildNotification({ type: "new_ride_added" });
+            const newRideUpdate = buildNotification({
+                type: "new_ride_added",
+            });
 
             broadcastNotification({
                 type: "new_ride_added",
@@ -27,12 +43,13 @@ export const createRide = async (req, res) => {
             });
         }
 
-        res.status(201).json({
+        return res.status(201).json({
             success: true,
             data: ride,
         });
+
     } catch (error) {
-        res.status(400).json({
+        return res.status(400).json({
             success: false,
             message: error.message,
         });
@@ -58,64 +75,85 @@ export const checkActiveRide = async (req, res) => {
 };
 
 export const getRides = async (req, res) => {
-  try {
-    const result = await getAllRideService({
-      type: req.query.type || "find",
-      category: req.query.category,
+    try {
 
-      // Always take user from JWT
-      userId: req.user.id,
+        const userId = req.user?.userId || req.user?.id;
 
-      // Find Rides filters
-      searchFrom: req.query.searchFrom,
-      searchDestination: req.query.searchDestination,
-      search: req.query.search,
-      transportMode: req.query.transportMode,
-      gender: req.query.gender,
-      fuelSharing: req.query.fuelSharing,
-      language: req.query.language,
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: "User authentication information is missing",
+            });
+        }
 
-      // Pagination
-      page: req.query.page || 1,
-      limit: req.query.limit || 10,
-    });
 
-    return res.status(200).json({
-      success: true,
-      totalRides: result.totalRides,
-      page: result.page,
-      limit: result.limit,
-      hasMore: result.hasMore,
-      data: result.rides,
-    });
-  } catch (error) {
-    console.error("GET RIDES ERROR:", error);
+        const result = await getAllRideService({
+            type: req.query.type || "find",
+            category: req.query.category,
 
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
+            userId,
+
+            // Find Rides filters
+            searchFrom: req.query.searchFrom,
+            searchDestination: req.query.searchDestination,
+            search: req.query.search,
+            transportMode: req.query.transportMode,
+            gender: req.query.gender,
+            fuelSharing: req.query.fuelSharing,
+            language: req.query.language,
+
+            // Pagination
+            page: req.query.page || 1,
+            limit: req.query.limit || 10,
+        });
+
+        console.log(result, 'result')
+
+        return res.status(200).json({
+            success: true,
+            totalRides: result.totalRides,
+            page: result.page,
+            limit: result.limit,
+            hasMore: result.hasMore,
+            data: result.rides,
+        });
+    } catch (error) {
+        console.error("GET RIDES ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
 };
 
 export const getMyRideCounts = async (req, res) => {
-  try {
-    const counts = await getMyRideCountsService({
-      userId: req.user.id,
-    });
+    try {
+        const userId = req.user?.userId || req.user?.id;
 
-    return res.status(200).json({
-      success: true,
-      data: counts,
-    });
-  } catch (error) {
-    console.error("GET MY RIDE COUNTS ERROR:", error);
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: "User authentication information is missing",
+            });
+        }
 
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
+        const counts = await getMyRideCountsService({
+            userId
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: counts,
+        });
+    } catch (error) {
+        console.error("GET MY RIDE COUNTS ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
 };
 
 // Update
