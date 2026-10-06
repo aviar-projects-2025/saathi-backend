@@ -36,10 +36,8 @@ export const createUser = async (req, res) => {
     const {
       firstName,
       lastName,
-      email,
       dob,
       mobile,
-      password,
       referralCode,
     } = req.body;
 
@@ -58,18 +56,18 @@ export const createUser = async (req, res) => {
       referredBy = referredUser._id;
     }
 
-    if (email) {
-      const emailUser = await User.findOne({ email });
+    if (mobile) {
+      const mobileUser = await User.findOne({ mobile });
 
-      if (emailUser) {
+      if (mobileUser) {
         return res.status(400).json({
           success: false,
-          message: "Email already exist!",
+          message: "Mobile number already exist!",
         });
       }
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // const hashedPassword = await bcrypt.hash(password, 10);
 
     const myReferralCode =
       firstName.substring(0, 3).toUpperCase() +
@@ -78,10 +76,10 @@ export const createUser = async (req, res) => {
     const user = await userCreateService({
       firstName,
       lastName,
-      email,
+      // email,
       dob,
       mobile,
-      password: hashedPassword,
+      // password: hashedPassword,
       referralCode: myReferralCode,
       referredBy,
       refApprove: referralCode && "Approved"
@@ -120,12 +118,10 @@ export const createUser = async (req, res) => {
 
 
     //sendmail
-    sendWelcomePendingEmail(
-      email,
-      firstName + " " + lastName,
-    )
-
-
+    // sendWelcomePendingEmail(
+    //   email,
+    //   firstName + " " + lastName,
+    // )
 
     res.status(201).json({
       success: true,
@@ -480,21 +476,21 @@ export const getTopRiders = async (req, res) => {
 
 // controller
 export const getMe = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select("-password");
+    try {
+        const user = await User.findById(req.user.userId).select("-password");
 
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User no longer exists",
-      });
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: "User no longer exists",
+            });
+        }
+
+        res.status(200).json(user);
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
     }
-
-    res.status(200).json(user);
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
 };

@@ -9,13 +9,17 @@ import {
     // sendOTP,
     sendOtp,
     verifyOtp,
-    verifyForgotPasswordOtp
+    verifyForgotPasswordOtp,
+    sendLoginOtp,
+    verifyLoginOtp,
 } from '../controller/authController.js';
 
 const router = express.Router();
 
 router.post('/register', register);
 router.post('/login', login);
+router.post('/login/send-otp', sendLoginOtp);
+router.post('/login/verify-otp', verifyLoginOtp);
 router.post('/forgot-password', forgotPassword);
 router.post('/forgot-password/verify-otp',verifyForgotPasswordOtp)
 // router.post('/verify-otp', verifyOTP);

@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import twilioClient from '../../config/twilio.js';
+import Referral from '../model/referral.js';
 
 const generateOTP = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -25,6 +26,44 @@ const generateReferralCode = () => {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return result;
+};
+
+const normalizeMobileNumber = (mobileNumber) => {
+    if (!mobileNumber) {
+        return null;
+    }
+
+    let phone = mobileNumber.toString().trim();
+
+    // Remove spaces, brackets, hyphens
+    phone = phone.replace(/[\s()-]/g, "");
+
+    // Already E.164
+    if (phone.startsWith("+")) {
+        return phone;
+    }
+
+    // 10-digit Indian number
+    if (phone.length === 10 && phone.startsWith("9")) {
+        return `+91${phone}`;
+    }
+
+    // 10-digit US number
+    if (phone.length === 10) {
+        return `+1${phone}`;
+    }
+
+    // 91XXXXXXXXXX
+    if (phone.length === 12 && phone.startsWith("91")) {
+        return `+${phone}`;
+    }
+
+    // 1XXXXXXXXXX
+    if (phone.length === 11 && phone.startsWith("1")) {
+        return `+${phone}`;
+    }
+
+    return null;
 };
 
 const createJWT = (userId, email) => {
@@ -110,37 +149,101 @@ const register = async (req, res) => {
 const sendOtp = async (req, res) => {
     try {
         const { mobileNumber } = req.body;
-       
+
         if (!mobileNumber) {
             return res.status(400).json({
+                success: false,
                 message: "Mobile number is required",
             });
         }
 
-        const phoneNumber = mobileNumber.startsWith("+")
-            ? mobileNumber
-            : `+91${mobileNumber}`;
+        const phoneNumber = normalizeMobileNumber(mobileNumber);
 
-        const verification = await twilioClient.verify.v2
-            .services(process.env.TWILIO_VERIFY_SID)
-            .verifications.create({
-                to: phoneNumber,
-                channel: "sms",
+        if (!phoneNumber) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid mobile number",
             });
+        }
 
-        return res.status(200).json({
-            success: true,
-            message: "OTP sent successfully",
-            status: verification.status,
+        const referral = await Referral.findOne({
+            mobile: phoneNumber,
         });
 
+        if (!referral) {
+            return res.status(404).json({
+                success: false,
+                status: "NOT_FOUND",
+                message:
+                    "No referral found for this mobile number. Please get a referral to sign up.",
+            });
+        }
+
+        if (referral.status === "Verified") {
+            return res.status(200).json({
+                success: true,
+                status: "VERIFIED",
+                message:
+                    "Your mobile number is already verified. Please login.",
+            });
+        }
+
+        if (referral.status === "Waiting") {
+            const isDevelopment =
+                process.env.NODE_ENV === "development";
+
+            const isProduction =
+                process.env.NODE_ENV === "production";
+
+            if (isDevelopment) {
+                console.log("=================================");
+                console.log("Development Login OTP");
+                console.log("Mobile:", phoneNumber);
+                console.log("OTP: 123456");
+                console.log("=================================");
+
+                return res.status(200).json({
+                    success: true,
+                    status: "OTP_SENT",
+                    message: "OTP sent successfully",
+                    development: true,
+                });
+            }
+
+            if (isProduction) {
+                const verification = await twilioClient.verify.v2
+                    .services(process.env.TWILIO_VERIFY_SID)
+                    .verifications.create({
+                        to: phoneNumber,
+                        channel: "sms",
+                    });
+
+                return res.status(200).json({
+                    success: true,
+                    status: "OTP_SENT",
+                    message: "OTP sent successfully",
+                    twilioStatus: verification.status,
+                });
+            }
+
+            return res.status(500).json({
+                success: false,
+                message: "Invalid NODE_ENV configuration",
+            });
+        }
+
+        return res.status(400).json({
+            success: false,
+            status: referral.status,
+            message:
+                "Invalid referral status. Please contact support.",
+        });
     } catch (error) {
-        console.error("Twilio Send OTP Error:", error);
+        console.error("Send Login OTP Error:", error);
 
         return res.status(500).json({
             success: false,
             message: "Failed to send OTP",
-            error: error.message,
         });
     }
 };
@@ -197,6 +300,409 @@ const login = async (req, res) => {
     }
 };
 
+export const sendLoginOtp = async (req, res) => {
+    try {
+        const { mobileNumber } = req.body;
+
+        if (!mobileNumber) {
+            return res.status(400).json({
+                success: false,
+                message: "Mobile number is required",
+            });
+        }
+
+        // =====================================================
+        // NORMALIZE MOBILE NUMBER
+        // =====================================================
+
+        let phoneNumber = mobileNumber.toString().trim();
+
+        if (phoneNumber.startsWith("+91")) {
+            // Already correct
+        } else if (
+            phoneNumber.startsWith("91") &&
+            phoneNumber.length === 12
+        ) {
+            phoneNumber = `+${phoneNumber}`;
+        } else {
+            phoneNumber = `+91${phoneNumber}`;
+        }
+
+        // =====================================================
+        // VALIDATE MOBILE NUMBER
+        // =====================================================
+
+        if (!/^\+91[6-9]\d{9}$/.test(phoneNumber)) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid Indian mobile number",
+            });
+        }
+
+        // =====================================================
+        // CHECK REFERRAL
+        // =====================================================
+
+        const referral = await Referral.findOne({
+            mobile: phoneNumber,
+        });
+
+        // =====================================================
+        // NO REFERRAL
+        // =====================================================
+
+        if (!referral) {
+            return res.status(404).json({
+                success: false,
+                status: "NOT_FOUND",
+                message:
+                    "No referral found for this mobile number. Please get a referral to sign up.",
+            });
+        }
+
+        // =====================================================
+        // WAITING REFERRAL
+        // =====================================================
+
+        if (referral.status === "Waiting") {
+
+            // -------------------------------------------------
+            // DEVELOPMENT OTP
+            // -------------------------------------------------
+
+            if (process.env.NODE_ENV === "development") {
+
+                const developmentOtp = "123456";
+
+                console.log("====================================");
+                console.log("DEVELOPMENT LOGIN OTP");
+                console.log("Mobile:", phoneNumber);
+                console.log("OTP:", developmentOtp);
+                console.log("====================================");
+
+                // Change referral status AFTER OTP is sent
+                referral.status = "Verified";
+                await referral.save();
+
+                return res.status(200).json({
+                    success: true,
+                    status: "OTP_SENT",
+                    message: "OTP sent successfully",
+                    development: true,
+                });
+            }
+
+            // -------------------------------------------------
+            // PRODUCTION - TWILIO VERIFY
+            // -------------------------------------------------
+
+            await twilioClient.verify.v2
+                .services(process.env.TWILIO_VERIFY_SID)
+                .verifications
+                .create({
+                    to: phoneNumber,
+                    channel: "sms",
+                });
+
+            // -------------------------------------------------
+            // OTP SENT SUCCESSFULLY
+            // NOW MARK REFERRAL AS VERIFIED
+            // -------------------------------------------------
+
+            referral.status = "Verified";
+            await referral.save();
+
+            return res.status(200).json({
+                success: true,
+                status: "OTP_SENT",
+                message: "OTP sent successfully",
+            });
+        }
+
+        // =====================================================
+        // VERIFIED REFERRAL
+        // =====================================================
+
+        if (referral.status === "Verified") {
+
+            const user = await User.findOne({
+                mobile: phoneNumber,
+            });
+
+            // -------------------------------------------------
+            // VERIFIED BUT USER DOES NOT EXIST
+            // -------------------------------------------------
+
+            if (!user) {
+                return res.status(403).json({
+                    success: false,
+                    status: "VERIFIED_NOT_REGISTERED",
+                    message:
+                        "Your referral is verified. Please complete your registration.",
+                });
+            }
+
+            // -------------------------------------------------
+            // USER ACCOUNT STATUS
+            // -------------------------------------------------
+
+            if (user.refApprove === "Waiting") {
+                return res.status(403).json({
+                    success: false,
+                    status: "WAITING",
+                    message:
+                        "Your account is not approved yet. Please wait for approval.",
+                });
+            }
+
+            if (user.refApprove === "Blocked") {
+                return res.status(403).json({
+                    success: false,
+                    status: "BLOCKED",
+                    message:
+                        "Your account is blocked. Please contact support.",
+                });
+            }
+
+            // =================================================
+            // SEND LOGIN OTP
+            // =================================================
+
+            if (process.env.NODE_ENV === "development") {
+
+                const developmentOtp = "123456";
+
+                console.log("====================================");
+                console.log("DEVELOPMENT LOGIN OTP");
+                console.log("Mobile:", phoneNumber);
+                console.log("OTP:", developmentOtp);
+                console.log("====================================");
+
+                return res.status(200).json({
+                    success: true,
+                    status: "OTP_SENT",
+                    message: "OTP sent successfully",
+                    development: true,
+                });
+            }
+
+            await twilioClient.verify.v2
+                .services(process.env.TWILIO_VERIFY_SID)
+                .verifications
+                .create({
+                    to: phoneNumber,
+                    channel: "sms",
+                });
+
+            return res.status(200).json({
+                success: true,
+                status: "OTP_SENT",
+                message: "OTP sent successfully",
+            });
+        }
+
+        // =====================================================
+        // UNKNOWN REFERRAL STATUS
+        // =====================================================
+
+        return res.status(403).json({
+            success: false,
+            status: referral.status,
+            message:
+                "Your referral is not eligible for login. Please contact support.",
+        });
+
+    } catch (error) {
+        console.error("Send Login OTP Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to process login request",
+        });
+    }
+};
+
+export const verifyLoginOtp = async (req, res) => {
+    try {
+        const { mobileNumber, otp } = req.body;
+
+        if (!mobileNumber || !otp) {
+            return res.status(400).json({
+                success: false,
+                message: "Mobile number and OTP are required",
+            });
+        }
+
+        const otpValue = otp.toString().trim();
+
+        // =====================================================
+        // VALIDATE OTP
+        // =====================================================
+
+        if (!/^\d{6}$/.test(otpValue)) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid 6-digit OTP",
+            });
+        }
+
+        // =====================================================
+        // NORMALIZE MOBILE NUMBER
+        // =====================================================
+
+        let phoneNumber = mobileNumber.toString().trim();
+
+        if (phoneNumber.startsWith("+91")) {
+            // Already correct
+        } else if (
+            phoneNumber.startsWith("91") &&
+            phoneNumber.length === 12
+        ) {
+            phoneNumber = `+${phoneNumber}`;
+        } else {
+            phoneNumber = `+91${phoneNumber}`;
+        }
+
+        // =====================================================
+        // VALIDATE MOBILE
+        // =====================================================
+
+        if (!/^\+91[6-9]\d{9}$/.test(phoneNumber)) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid Indian mobile number",
+            });
+        }
+
+        // =====================================================
+        // FIND USER
+        // =====================================================
+
+        const user = await User.findOne({
+            mobile: phoneNumber,
+        });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "No account found with this mobile number. Please sign up first.",
+            });
+        }
+
+        // =====================================================
+        // ACCOUNT STATUS
+        // =====================================================
+
+        if (user.refApprove === "Waiting") {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "Your account is not approved yet. Please wait for approval.",
+            });
+        }
+
+        if (user.refApprove === "Blocked") {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "Your account is blocked. Please contact support.",
+            });
+        }
+
+        // =====================================================
+        // DEVELOPMENT OTP
+        // =====================================================
+
+        if (process.env.NODE_ENV === "development") {
+
+            if (otpValue !== "123456") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Incorrect code, please try again",
+                });
+            }
+
+        }
+
+        // =====================================================
+        // PRODUCTION - TWILIO VERIFY
+        // =====================================================
+
+        if (process.env.NODE_ENV === "production") {
+
+            const verificationCheck =
+                await twilioClient.verify.v2
+                    .services(process.env.TWILIO_VERIFY_SID)
+                    .verificationChecks
+                    .create({
+                        to: phoneNumber,
+                        code: otpValue,
+                    });
+
+            if (verificationCheck.status !== "approved") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Incorrect code, please try again",
+                });
+            }
+        }
+
+        // =====================================================
+        // CREATE JWT
+        // =====================================================
+
+        const token = createJWT(
+            user._id,
+            user.mobile
+        );
+
+        // =====================================================
+        // RESPONSE
+        // =====================================================
+
+        return res.status(200).json({
+            success: true,
+            message: "Login successful",
+
+            token,
+
+            user: {
+                id: user._id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+
+                // Keep this only if email still exists
+                // Remove later when email is completely removed
+                email: user.email,
+
+                profileImage: user.profileImage,
+                gender: user.gender,
+                mobile: user.mobile,
+                bio: user.bio,
+                dob: user.dob,
+                role: user.role,
+                referralCode: user.referralCode,
+                referredBy: user.referredBy,
+                refApprove: user.refApprove,
+                completedRideCount: user.completedRideCount,
+            },
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Verify Login OTP Error:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to verify OTP",
+        });
+    }
+};
+
 const forgotPassword = async (req, res) => {
     try {
         // Frontend sends: mobileNumber: "+919876543210"
@@ -221,7 +727,7 @@ const forgotPassword = async (req, res) => {
         const mobile = phoneNumber;
 
         // console.log(mobile)
-    
+
         // Find user
         const user = await User.findOne({ mobile });
 
@@ -302,35 +808,124 @@ export const verifyOtp = async (req, res) => {
 
         if (!mobileNumber || !otp) {
             return res.status(400).json({
+                success: false,
                 message: "Mobile number and OTP are required",
             });
         }
 
-        const phoneNumber = mobileNumber.startsWith("+")
-            ? mobileNumber
-            : `+91${mobileNumber}`;
+        // =====================================================
+        // NORMALIZE PHONE NUMBER
+        // =====================================================
 
-        const verificationCheck = await twilioClient.verify.v2
-            .services(process.env.TWILIO_VERIFY_SID)
-            .verificationChecks.create({
-                to: phoneNumber,
-                code: otp,
-            });
+        let phoneNumber = mobileNumber
+            .toString()
+            .trim()
+            .replace(/[\s()-]/g, "");
 
-        if (verificationCheck.status !== "approved") {
+        if (!phoneNumber.startsWith("+")) {
+            // 10 digit number
+            if (phoneNumber.length === 10) {
+                // In your testing environment you can select +1/+91
+                // so normally frontend sends +1 or +91.
+                phoneNumber = `+91${phoneNumber}`;
+            }
+
+            // 1XXXXXXXXXX
+            else if (
+                phoneNumber.length === 11 &&
+                phoneNumber.startsWith("1")
+            ) {
+                phoneNumber = `+${phoneNumber}`;
+            }
+
+            // 91XXXXXXXXXX
+            else if (
+                phoneNumber.length === 12 &&
+                phoneNumber.startsWith("91")
+            ) {
+                phoneNumber = `+${phoneNumber}`;
+            }
+        }
+
+        // =====================================================
+        // BASIC PHONE VALIDATION
+        // =====================================================
+
+        if (!/^\+[1-9]\d{7,14}$/.test(phoneNumber)) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid OTP",
+                message: "Invalid mobile number",
             });
         }
 
-        return res.status(200).json({
-            success: true,
-            message: "OTP verified successfully",
+        // =====================================================
+        // OTP VALIDATION
+        // =====================================================
+
+        if (!/^\d{6}$/.test(otp.toString())) {
+            return res.status(400).json({
+                success: false,
+                message: "OTP must be 6 digits",
+            });
+        }
+
+        if (process.env.NODE_ENV === "development") {
+
+            console.log("Development OTP verification");
+            console.log("Mobile:", phoneNumber);
+            console.log("OTP:", otp);
+
+            if (otp.toString() !== "123456") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid OTP",
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: "OTP verified successfully",
+            });
+        }
+
+        if (process.env.NODE_ENV === "production") {
+
+            // Production should only allow US numbers
+            if (!phoneNumber.startsWith("+1")) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Only US mobile numbers are allowed",
+                });
+            }
+
+            const verificationCheck =
+                await twilioClient.verify.v2
+                    .services(process.env.TWILIO_VERIFY_SID)
+                    .verificationChecks.create({
+                        to: phoneNumber,
+                        code: otp.toString(),
+                    });
+
+            if (verificationCheck.status !== "approved") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid or expired OTP",
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: "OTP verified successfully",
+            });
+        }
+
+        return res.status(500).json({
+            success: false,
+            message: "Invalid NODE_ENV configuration",
         });
 
     } catch (error) {
-        console.error("Twilio Verify OTP Error:", error);
+        console.error("Verify OTP Error:", error);
 
         return res.status(400).json({
             success: false,
