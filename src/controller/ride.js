@@ -15,26 +15,10 @@ import User from "../model/user.js";
 // controller
 export const createRide = async (req, res) => {
     try {
-        const userId = req.user?.userId || req.user?.id;
-
-        if (!userId) {
-            return res.status(401).json({
-                success: false,
-                message: "User authentication information is missing",
-            });
-        }
-
-        const rideData = {
-            ...req.body,
-            createdBy: userId,
-        };
-
-        const ride = await createRideService(rideData);
+        const ride = await createRideService(req.body);
 
         if (ride) {
-            const newRideUpdate = buildNotification({
-                type: "new_ride_added",
-            });
+            const newRideUpdate = buildNotification({ type: "new_ride_added" });
 
             broadcastNotification({
                 type: "new_ride_added",
@@ -43,13 +27,12 @@ export const createRide = async (req, res) => {
             });
         }
 
-        return res.status(201).json({
+        res.status(201).json({
             success: true,
             data: ride,
         });
-
     } catch (error) {
-        return res.status(400).json({
+        res.status(400).json({
             success: false,
             message: error.message,
         });
