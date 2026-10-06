@@ -6,7 +6,6 @@ import {
   getTopRidersService,
   updateProfileService,
 } from '../service/user.js'
-
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import User from '../model/user.js'
@@ -240,8 +239,8 @@ export const loginUser = async (req, res) => {
 
 export const getPeopleNearby = async (req, res) => {
   try {
-    const { id : currentUserId } = req.params
-    
+    const { id: currentUserId } = req.params
+
     // Get logged-in user's ZIP/PIN code
     const currentUser = await User.findById(currentUserId).select("zipcode");
 
@@ -385,7 +384,6 @@ export const updateProfile = async (req, res) => {
       ...req.body,
     };
 
-    console.log(databody, "databody");
 
     // Check mobile number
     const { mobile } = req.body;
@@ -429,10 +427,6 @@ export const updateProfile = async (req, res) => {
           }
         );
 
-        console.log(
-          "Old profile image deleted:",
-          oldImagePublicId
-        );
       } catch (deleteError) {
         console.error(
           "Failed to delete old Cloudinary image:",

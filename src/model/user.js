@@ -28,7 +28,10 @@ const userSchema = new mongoose.Schema({
         type: String,
     },
     zipcode: {
-         type: String,
+        type: String,
+    },
+    city: {
+        type: String,
     },
     dob: {
         type: String,
@@ -67,16 +70,14 @@ const userSchema = new mongoose.Schema({
     imagePublicId: {
         type: String,
     },
-    isMessageApproved : {
-        type : Boolean,
-        default : false
+    isMessageApproved: {
+        type: Boolean,
+        default: false
     },
-    messageNumber : {
+    messageNumber: {
         type: String,
     },
-    // city: {
-    //   type: String,
-    // },
+  
     // isVerified: {
     //   type: Boolean,
     //   default: false,

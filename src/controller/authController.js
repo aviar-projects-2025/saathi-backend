@@ -83,6 +83,7 @@ const register = async (req, res) => {
             gender,
             mobile,
             bio,
+            city,
             dob,
             referredBy
         } = req.body;
@@ -114,6 +115,7 @@ const register = async (req, res) => {
             mobile,
             bio,
             dob,
+            city,
             referralCode,
             referredBy: referredById || null
         });
@@ -283,6 +285,7 @@ const login = async (req, res) => {
                 gender: user.gender,
                 mobile: user.mobile,
                 bio: user.bio,
+                city:user.city,
                 dob: user.dob,
                 role: user.role,
                 referralCode: user.referralCode,
