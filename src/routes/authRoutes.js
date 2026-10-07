@@ -12,7 +12,10 @@ import {
     verifyForgotPasswordOtp,
     sendLoginOtp,
     verifyLoginOtp,
+    sendChangeMobileOtp,
+    verifyChangeMobileOtp,
 } from '../controller/authController.js';
+import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -27,6 +30,8 @@ router.post('/reset-password', resetPassword);
 router.post('/resend-otp', resendOTP);
 router.post("/send-otp", sendOtp);
 router.post("/verify-otp", verifyOtp);
+router.post("/send-change-mobile-otp",verifyToken,sendChangeMobileOtp);
+router.post("/verify-change-mobile-otp",verifyToken,verifyChangeMobileOtp);
 
 
 export default router;

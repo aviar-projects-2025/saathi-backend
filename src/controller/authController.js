@@ -1180,6 +1180,381 @@ export const verifyForgotPasswordOtp = async (req, res) => {
     }
 };
 
+export const sendChangeMobileOtp = async (req, res) => {
+    try {
+        const { mobileNumber } = req.body;
+
+        // =====================================================
+        // AUTHENTICATED USER
+        // =====================================================
+
+        const userId = req.user?.userId;
+
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized",
+            });
+        }
+
+        if (!mobileNumber) {
+            return res.status(400).json({
+                success: false,
+                message: "New mobile number is required",
+            });
+        }
+
+        // =====================================================
+        // NORMALIZE NEW PHONE NUMBER
+        // =====================================================
+
+        const phoneNumber = normalizeMobileNumber(mobileNumber);
+
+        if (!phoneNumber) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid mobile number",
+            });
+        }
+
+        // =====================================================
+        // PRODUCTION - ONLY US NUMBERS
+        // =====================================================
+
+        if (
+            process.env.NODE_ENV === "production" &&
+            !phoneNumber.startsWith("+1")
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Only US mobile numbers are allowed",
+            });
+        }
+
+        // =====================================================
+        // GET CURRENT USER
+        // =====================================================
+
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found",
+            });
+        }
+
+        // =====================================================
+        // CHECK IF NEW NUMBER IS SAME AS CURRENT NUMBER
+        // =====================================================
+
+        if (user.mobile === phoneNumber) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "New mobile number must be different from your current number",
+            });
+        }
+
+        // =====================================================
+        // CHECK USER COLLECTION
+        // =====================================================
+
+        const existingUser = await User.findOne({
+            mobile: phoneNumber,
+            _id: { $ne: userId },
+        });
+
+        if (existingUser) {
+            return res.status(409).json({
+                success: false,
+                status: "ALREADY_USED",
+                message:
+                    "This mobile number is already registered with another account.",
+            });
+        }
+
+        // =====================================================
+        // CHECK REFERRAL COLLECTION
+        // =====================================================
+
+        const existingReferral = await Referral.findOne({
+            mobile: phoneNumber,
+        });
+
+        if (existingReferral) {
+            return res.status(409).json({
+                success: false,
+                status: "ALREADY_USED",
+                message:
+                    "This mobile number is already associated with a referral.",
+            });
+        }
+
+        // =====================================================
+        // DEVELOPMENT
+        // =====================================================
+
+        if (process.env.NODE_ENV === "development") {
+            console.log("=================================");
+            console.log("Development Change Mobile OTP");
+            console.log("User:", userId);
+            console.log("New Mobile:", phoneNumber);
+            console.log("OTP: 123456");
+            console.log("=================================");
+
+            return res.status(200).json({
+                success: true,
+                status: "OTP_SENT",
+                message: "OTP sent successfully",
+                development: true,
+            });
+        }
+
+        // =====================================================
+        // PRODUCTION
+        // =====================================================
+
+        if (process.env.NODE_ENV === "production") {
+            const verification = await twilioClient.verify.v2
+                .services(process.env.TWILIO_VERIFY_SID)
+                .verifications.create({
+                    to: phoneNumber,
+                    channel: "sms",
+                });
+
+            return res.status(200).json({
+                success: true,
+                status: "OTP_SENT",
+                message: "OTP sent successfully",
+                twilioStatus: verification.status,
+            });
+        }
+
+        // =====================================================
+        // INVALID ENVIRONMENT
+        // =====================================================
+
+        return res.status(500).json({
+            success: false,
+            message: "Invalid NODE_ENV configuration",
+        });
+    } catch (error) {
+        console.error("Send Change Mobile OTP Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to send OTP",
+        });
+    }
+};
+
+export const verifyChangeMobileOtp = async (req, res) => {
+    try {
+        const { mobileNumber, otp } = req.body;
+
+        // =====================================================
+        // AUTHENTICATED USER
+        // =====================================================
+
+        const userId = req.user?.userId;
+
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized",
+            });
+        }
+
+        if (!mobileNumber || !otp) {
+            return res.status(400).json({
+                success: false,
+                message: "Mobile number and OTP are required",
+            });
+        }
+
+        // =====================================================
+        // NORMALIZE PHONE NUMBER
+        // =====================================================
+
+        const phoneNumber = normalizeMobileNumber(mobileNumber);
+
+        if (!phoneNumber) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid mobile number",
+            });
+        }
+
+        // =====================================================
+        // OTP VALIDATION
+        // =====================================================
+
+        if (!/^\d{6}$/.test(otp.toString())) {
+            return res.status(400).json({
+                success: false,
+                message: "OTP must be 6 digits",
+            });
+        }
+
+        // =====================================================
+        // GET CURRENT USER
+        // =====================================================
+
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found",
+            });
+        }
+
+        // =====================================================
+        // SAME NUMBER CHECK
+        // =====================================================
+
+        if (user.mobile === phoneNumber) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "New mobile number must be different from your current number",
+            });
+        }
+
+        // =====================================================
+        // PRODUCTION - ONLY US NUMBERS
+        // =====================================================
+
+        if (
+            process.env.NODE_ENV === "production" &&
+            !phoneNumber.startsWith("+1")
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Only US mobile numbers are allowed",
+            });
+        }
+
+        // =====================================================
+        // VERIFY OTP
+        // =====================================================
+
+        if (process.env.NODE_ENV === "development") {
+            console.log("Development Change Mobile OTP Verification");
+            console.log("User:", userId);
+            console.log("Mobile:", phoneNumber);
+            console.log("OTP:", otp);
+
+            if (otp.toString() !== "123456") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid OTP",
+                });
+            }
+        } else if (process.env.NODE_ENV === "production") {
+            const verificationCheck =
+                await twilioClient.verify.v2
+                    .services(process.env.TWILIO_VERIFY_SID)
+                    .verificationChecks.create({
+                        to: phoneNumber,
+                        code: otp.toString(),
+                    });
+
+            if (verificationCheck.status !== "approved") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid or expired OTP",
+                });
+            }
+        } else {
+            return res.status(500).json({
+                success: false,
+                message: "Invalid NODE_ENV configuration",
+            });
+        }
+
+        // =====================================================
+        // CHECK AGAIN BEFORE UPDATING
+        // =====================================================
+
+        const existingUser = await User.findOne({
+            mobile: phoneNumber,
+            _id: { $ne: userId },
+        });
+
+        if (existingUser) {
+            return res.status(409).json({
+                success: false,
+                status: "ALREADY_USED",
+                message:
+                    "This mobile number is already registered with another account.",
+            });
+        }
+
+        const existingReferral = await Referral.findOne({
+            mobile: phoneNumber,
+        });
+
+        if (existingReferral) {
+            return res.status(409).json({
+                success: false,
+                status: "ALREADY_USED",
+                message:
+                    "This mobile number is already associated with a referral.",
+            });
+        }
+
+        // =====================================================
+        // FIND CURRENT USER'S REFERRAL
+        // =====================================================
+
+        const referral = await Referral.findOne({
+            mobile: user.mobile,
+        });
+
+        if (!referral) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "Referral record not found for your current mobile number.",
+            });
+        }
+
+        // =====================================================
+        // UPDATE USER MOBILE
+        // =====================================================
+
+        user.mobile = phoneNumber;
+        await user.save();
+
+        // =====================================================
+        // UPDATE REFERRAL MOBILE
+        // =====================================================
+
+        referral.mobile = phoneNumber;
+        await referral.save();
+
+        // =====================================================
+        // SUCCESS
+        // =====================================================
+
+        return res.status(200).json({
+            success: true,
+            status: "MOBILE_CHANGED",
+            message: "Mobile number changed successfully",
+            mobile: phoneNumber,
+        });
+    } catch (error) {
+        console.error("Verify Change Mobile OTP Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to change mobile number",
+        });
+    }
+};
+
 export {
     register,
     login,
