@@ -199,11 +199,11 @@ const sendOtp = async (req, res) => {
                 process.env.NODE_ENV === "production";
 
             if (isDevelopment) {
-                console.log("=================================");
-                console.log("Development Login OTP");
-                console.log("Mobile:", phoneNumber);
-                console.log("OTP: 123456");
-                console.log("=================================");
+                // console.log("=================================");
+                // console.log("Development Login OTP");
+                // console.log("Mobile:", phoneNumber);
+                // console.log("OTP: 123456");
+                // console.log("=================================");
 
                 return res.status(200).json({
                     success: true,
@@ -286,8 +286,8 @@ const login = async (req, res) => {
                 gender: user.gender,
                 mobile: user.mobile,
                 bio: user.bio,
-                city:user.city,
-                language:user.language,
+                city: user.city,
+                language: user.language,
                 dob: user.dob,
                 role: user.role,
                 referralCode: user.referralCode,
@@ -322,27 +322,44 @@ export const sendLoginOtp = async (req, res) => {
 
         let phoneNumber = mobileNumber.toString().trim();
 
-        if (phoneNumber.startsWith("+91")) {
-            // Already correct
-        } else if (
-            phoneNumber.startsWith("91") &&
-            phoneNumber.length === 12
-        ) {
-            phoneNumber = `+${phoneNumber}`;
-        } else {
-            phoneNumber = `+91${phoneNumber}`;
+        if (process.env.NODE_ENV === "development") {
+            if (phoneNumber.startsWith("+91")) {
+                // Already correct
+            } else if (
+                phoneNumber.startsWith("91") &&
+                phoneNumber.length === 12
+            ) {
+                phoneNumber = `+${phoneNumber}`;
+            } else {
+                phoneNumber = `+91${phoneNumber}`;
+            }
+
+            if (!/^\+91[6-9]\d{9}$/.test(phoneNumber)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Please enter a valid Indian mobile number",
+                });
+            }
+        } else{
+            if (phoneNumber.startsWith("+1")) {
+                // Already correct
+            } else if (
+                phoneNumber.startsWith("1") &&
+                phoneNumber.length === 11
+            ) {
+                phoneNumber = `+${phoneNumber}`;
+            } else {
+                phoneNumber = `+1${phoneNumber}`;
+            }
+
+            if (!/^\+1[2-9]\d{9}$/.test(phoneNumber)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Please enter a valid US mobile number",
+                });
+            }
         }
 
-        // =====================================================
-        // VALIDATE MOBILE NUMBER
-        // =====================================================
-
-        if (!/^\+91[6-9]\d{9}$/.test(phoneNumber)) {
-            return res.status(400).json({
-                success: false,
-                message: "Please enter a valid Indian mobile number",
-            });
-        }
 
         // =====================================================
         // CHECK REFERRAL
@@ -375,53 +392,28 @@ export const sendLoginOtp = async (req, res) => {
             // DEVELOPMENT OTP
             // -------------------------------------------------
 
-            if (process.env.NODE_ENV === "development") {
+            // if (process.env.NODE_ENV === "development") {
 
-                const developmentOtp = "123456";
+            // const developmentOtp = "123456";
 
-                console.log("====================================");
-                console.log("DEVELOPMENT LOGIN OTP");
-                console.log("Mobile:", phoneNumber);
-                console.log("OTP:", developmentOtp);
-                console.log("====================================");
+            // console.log("====================================");
+            // console.log("DEVELOPMENT LOGIN OTP");
+            // console.log("Mobile:", phoneNumber);
+            // console.log("OTP:", developmentOtp);
+            // console.log("====================================");
 
-                // Change referral status AFTER OTP is sent
-                referral.status = "Verified";
-                await referral.save();
+            // Change referral status AFTER OTP is sent
+            // referral.status = "Verified";
+            // await referral.save();
 
-                return res.status(200).json({
-                    success: true,
-                    status: "OTP_SENT",
-                    message: "OTP sent successfully",
-                    development: true,
-                });
-            }
-
-            // -------------------------------------------------
-            // PRODUCTION - TWILIO VERIFY
-            // -------------------------------------------------
-
-            await twilioClient.verify.v2
-                .services(process.env.TWILIO_VERIFY_SID)
-                .verifications
-                .create({
-                    to: phoneNumber,
-                    channel: "sms",
-                });
-
-            // -------------------------------------------------
-            // OTP SENT SUCCESSFULLY
-            // NOW MARK REFERRAL AS VERIFIED
-            // -------------------------------------------------
-
-            referral.status = "Verified";
-            await referral.save();
-
-            return res.status(200).json({
-                success: true,
-                status: "OTP_SENT",
-                message: "OTP sent successfully",
+            return res.status(500).json({
+                success: false,
+                status: "Waiting",
+                message: "Signup to login",
+                // development: true,
             });
+            // }
+
         }
 
         // =====================================================
@@ -477,11 +469,11 @@ export const sendLoginOtp = async (req, res) => {
 
                 const developmentOtp = "123456";
 
-                console.log("====================================");
-                console.log("DEVELOPMENT LOGIN OTP");
-                console.log("Mobile:", phoneNumber);
-                console.log("OTP:", developmentOtp);
-                console.log("====================================");
+                // console.log("====================================");
+                // console.log("DEVELOPMENT LOGIN OTP");
+                // console.log("Mobile:", phoneNumber);
+                // console.log("OTP:", developmentOtp);
+                // console.log("====================================");
 
                 return res.status(200).json({
                     success: true,
