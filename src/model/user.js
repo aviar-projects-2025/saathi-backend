@@ -77,7 +77,9 @@ const userSchema = new mongoose.Schema({
     messageNumber: {
         type: String,
     },
-  
+       language: {
+      type: [String],
+       }
     // isVerified: {
     //   type: Boolean,
     //   default: false,
