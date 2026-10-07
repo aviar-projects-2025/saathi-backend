@@ -59,7 +59,6 @@ export const checkActiveRide = async (req, res) => {
 
 export const getRides = async (req, res) => {
     try {
-
         const userId = req.user?.userId || req.user?.id;
 
         if (!userId) {
@@ -69,14 +68,11 @@ export const getRides = async (req, res) => {
             });
         }
 
-
         const result = await getAllRideService({
             type: req.query.type || "find",
             category: req.query.category,
 
             userId,
-
-            // Find Rides filters
             searchFrom: req.query.searchFrom,
             searchDestination: req.query.searchDestination,
             search: req.query.search,
@@ -90,7 +86,7 @@ export const getRides = async (req, res) => {
             limit: req.query.limit || 10,
         });
 
-        console.log(result, 'result')
+
 
         return res.status(200).json({
             success: true,
@@ -131,7 +127,6 @@ export const getMyRideCounts = async (req, res) => {
         });
     } catch (error) {
         console.error("GET MY RIDE COUNTS ERROR:", error);
-
         return res.status(500).json({
             success: false,
             message: error.message,
@@ -235,7 +230,6 @@ export const cancelRide = async (req, res) => {
             { new: true }
         )
 
-        console.log(updatedRide, 'Ride')
 
         const ReqLists = await BookRide.find({
             status: 'ACCEPTED',

@@ -470,21 +470,21 @@ export const getTopRiders = async (req, res) => {
 
 // controller
 export const getMe = async (req, res) => {
-    try {
-        const user = await User.findById(req.user.userId).select("-password");
+  try {
+    const user = await User.findById(req.user.userId).select("-password");
 
-        if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: "User no longer exists",
-            });
-        }
-
-        res.status(200).json(user);
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message,
-        });
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User no longer exists",
+      });
     }
+
+    res.status(200).json(user);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };

@@ -581,7 +581,7 @@ export const getAllRideService = async ({
   const rides = await Ride.find(query)
     .populate(
       "createdBy",
-      "firstName lastName profileImage zipcode"
+      "firstName lastName profileImage zipcode language"
     )
     .sort({
       startTime: 1,
