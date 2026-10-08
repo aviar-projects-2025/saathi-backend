@@ -819,8 +819,6 @@ export const verifyOtp = async (req, res) => {
         if (!phoneNumber.startsWith("+")) {
             // 10 digit number
             if (phoneNumber.length === 10) {
-                // In your testing environment you can select +1/+91
-                // so normally frontend sends +1 or +91.
                 phoneNumber = `+91${phoneNumber}`;
             }
 
@@ -863,12 +861,22 @@ export const verifyOtp = async (req, res) => {
             });
         }
 
-        if (process.env.NODE_ENV === "development") {
+        // =====================================================
+        // VERIFY OTP
+        // =====================================================
 
+        let otpVerified = false;
+
+        // =====================================================
+        // DEVELOPMENT
+        // =====================================================
+
+        if (process.env.NODE_ENV === "development") {
             console.log("Development OTP verification");
             console.log("Mobile:", phoneNumber);
             console.log("OTP:", otp);
 
+            // Dummy OTP for development
             if (otp.toString() !== "123456") {
                 return res.status(400).json({
                     success: false,
@@ -876,14 +884,14 @@ export const verifyOtp = async (req, res) => {
                 });
             }
 
-            return res.status(200).json({
-                success: true,
-                message: "OTP verified successfully",
-            });
+            otpVerified = true;
         }
 
-        if (process.env.NODE_ENV === "production") {
+        // =====================================================
+        // PRODUCTION
+        // =====================================================
 
+        else if (process.env.NODE_ENV === "production") {
             // Production should only allow US numbers
             if (!phoneNumber.startsWith("+1")) {
                 return res.status(400).json({
@@ -907,16 +915,48 @@ export const verifyOtp = async (req, res) => {
                 });
             }
 
+            otpVerified = true;
+        }
+
+        // =====================================================
+        // INVALID ENVIRONMENT
+        // =====================================================
+
+        else {
+            return res.status(500).json({
+                success: false,
+                message: "Invalid NODE_ENV configuration",
+            });
+        }
+
+        // =====================================================
+        // OTP VERIFIED
+        // UPDATE REFERRAL STATUS
+        // =====================================================
+
+        if (otpVerified) {
+            const referral = await Referral.findOne({
+                mobileNumber: phoneNumber,
+            });
+
+            if (referral) {
+                referral.status = "Verified";
+                await referral.save();
+
+                console.log(
+                    `Referral verified for mobile: ${phoneNumber}`
+                );
+            } else {
+                console.log(
+                    `No referral found for mobile: ${phoneNumber}`
+                );
+            }
+
             return res.status(200).json({
                 success: true,
                 message: "OTP verified successfully",
             });
         }
-
-        return res.status(500).json({
-            success: false,
-            message: "Invalid NODE_ENV configuration",
-        });
 
     } catch (error) {
         console.error("Verify OTP Error:", error);
