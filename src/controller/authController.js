@@ -936,13 +936,12 @@ export const verifyOtp = async (req, res) => {
 
         if (otpVerified) {
             const referral = await Referral.findOne({
-                mobileNumber: phoneNumber,
+                mobile: phoneNumber,
             });
 
             if (referral) {
                 referral.status = "Verified";
                 await referral.save();
-
                 console.log(
                     `Referral verified for mobile: ${phoneNumber}`
                 );
