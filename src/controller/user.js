@@ -371,6 +371,7 @@ export const updateProfile = async (req, res) => {
   try {
     const { userId } = req.params;
 
+    // 1. Find user
     const user = await User.findById(userId);
 
     if (!user) {
@@ -380,13 +381,8 @@ export const updateProfile = async (req, res) => {
       });
     }
 
-    const databody = {
-      ...req.body,
-    };
-
-
-    // Check mobile number
-    const { mobile } = req.body;
+    // 2. Check mobile number
+    const { mobile, imagePublicId } = req.body;
 
     if (mobile) {
       const existingUser = await User.findOne({ mobile });
@@ -402,23 +398,21 @@ export const updateProfile = async (req, res) => {
       }
     }
 
-    // Store old Cloudinary public ID
+    // 3. Store old image public ID
     const oldImagePublicId = user.imagePublicId;
 
-    // Update database
+    // 4. Update profile
     const data = await updateProfileService(
       userId,
-      databody
+      req.body
     );
 
-    // If a new profile image was uploaded,
-    // delete the old image from Cloudinary
-    if (
-      req.body.profileImage &&
-      req.body.imagePublicId &&
-      oldImagePublicId &&
-      oldImagePublicId !== req.body.imagePublicId
-    ) {
+    // 5. Delete old image if profile image changed
+    const imageChanged =
+      imagePublicId &&
+      imagePublicId !== oldImagePublicId;
+
+    if (imageChanged && oldImagePublicId) {
       try {
         await cloudinary.uploader.destroy(
           oldImagePublicId,
@@ -426,21 +420,20 @@ export const updateProfile = async (req, res) => {
             resource_type: "image",
           }
         );
-
-      } catch (deleteError) {
+      } catch (error) {
         console.error(
-          "Failed to delete old Cloudinary image:",
-          deleteError
+          "Cloudinary old image deletion failed:",
+          error
         );
       }
     }
 
+    // 6. Response
     return res.status(200).json({
       success: true,
       message: "Profile updated",
       data,
     });
-
   } catch (error) {
     console.error("Update profile error:", error);
 
