@@ -78,7 +78,6 @@ const register = async (req, res) => {
         const {
             firstName,
             lastName,
-            email,
             password,
             gender,
             mobile,
@@ -89,11 +88,11 @@ const register = async (req, res) => {
             referredBy
         } = req.body;
 
-        const existingUser = await User.findOne({ email });
+        const existingUser = await User.findOne({ mobile });
         if (existingUser) {
             return res.status(400).json({
                 success: false,
-                message: 'User already exists with this email'
+                message: 'User already exists with this mobile number'
             });
         }
 
@@ -110,7 +109,6 @@ const register = async (req, res) => {
         const user = new User({
             firstName,
             lastName,
-            email,
             password,
             gender,
             mobile,
@@ -123,7 +121,7 @@ const register = async (req, res) => {
 
         await user.save();
 
-        await sendWelcomeEmail(email, firstName);
+        // await sendWelcomeEmail(email, firstName);
 
         const token = createJWT(user._id, user.email);
 
@@ -135,7 +133,6 @@ const register = async (req, res) => {
                 id: user._id,
                 firstName: user.firstName,
                 lastName: user.lastName,
-                email: user.email,
                 referralCode: user.referralCode,
                 role: user.role
             }

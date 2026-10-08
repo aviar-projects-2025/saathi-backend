@@ -12,11 +12,6 @@ const userSchema = new mongoose.Schema({
     profileImage: {
         type: String,
     },
-    // email: {
-    //     type: String,
-    //     required: true,
-    //     unique: true
-    // },
     gender: {
         type: String,
     },
