@@ -65,8 +65,8 @@ export const findReferral = async (req, res) => {
 
         // Waiting → Verified
         if (referral.status === "Waiting") {
-            referral.status = "Verified";
-            await referral.save();
+            // referral.status = "Verified";
+            // await referral.save();
 
             return res.status(200).json({
                 success: true,
