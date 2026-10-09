@@ -19,23 +19,23 @@ cron.schedule("* * * * *", async () => {
     );
 
     if (!rides.length) {
-      console.log("[RIDE CRON] No rides to process");
+    //   console.log("[RIDE CRON] No rides to process");
       return;
     }
 
-    console.log(
-      "[RIDE CRON] Rides found:",
-      rides.length
-    );
+    // console.log(
+    //   "[RIDE CRON] Rides found:",
+    //   rides.length
+    // );
 
     // --------------------------------------------------
     // 2. Process each ride
     // --------------------------------------------------
     for (const ride of rides) {
-      console.log(
-        "[RIDE CRON] Processing ride:",
-        ride._id.toString()
-      );
+    //   console.log(
+    //     "[RIDE CRON] Processing ride:",
+    //     ride._id.toString()
+    //   );
 
       // ------------------------------------------------
       // 3. Find ACCEPTED bookings
@@ -45,10 +45,10 @@ cron.schedule("* * * * *", async () => {
         status: "ACCEPTED",
       }).select("requestedBy");
 
-      console.log(
-        "[RIDE CRON] Accepted bookings:",
-        acceptedBookings.length
-      );
+    //   console.log(
+    //     "[RIDE CRON] Accepted bookings:",
+    //     acceptedBookings.length
+    //   );
 
       // ------------------------------------------------
       // 4. Notify accepted passengers
@@ -76,10 +76,10 @@ cron.schedule("* * * * *", async () => {
           },
         });
 
-        console.log(
-          "[RIDE CRON] Ride started notification sent to:",
-          userId
-        );
+        // console.log(
+        //   "[RIDE CRON] Ride started notification sent to:",
+        //   userId
+        // );
       }
 
       // ------------------------------------------------
@@ -106,10 +106,10 @@ cron.schedule("* * * * *", async () => {
         },
       });
 
-      console.log(
-        "[RIDE CRON] Owner notification sent:",
-        ownerId
-      );
+    //   console.log(
+    //     "[RIDE CRON] Owner notification sent:",
+    //     ownerId
+    //   );
 
       // ------------------------------------------------
       // 6. Find PENDING bookings
@@ -119,10 +119,10 @@ cron.schedule("* * * * *", async () => {
         status: "PENDING",
       }).select("requestedBy");
 
-      console.log(
-        "[RIDE CRON] Pending bookings:",
-        pendingBookings.length
-      );
+    //   console.log(
+    //     "[RIDE CRON] Pending bookings:",
+    //     pendingBookings.length
+    //   );
 
       // ------------------------------------------------
       // 7. Auto reject pending bookings
@@ -140,10 +140,10 @@ cron.schedule("* * * * *", async () => {
           }
         );
 
-        console.log(
-          "[RIDE CRON] Pending bookings auto-rejected:",
-          pendingBookings.length
-        );
+        // console.log(
+        //   "[RIDE CRON] Pending bookings auto-rejected:",
+        //   pendingBookings.length
+        // );
 
         // ----------------------------------------------
         // 8. Notify users whose requests were rejected
@@ -178,10 +178,10 @@ cron.schedule("* * * * *", async () => {
             },
           });
 
-          console.log(
-            "[RIDE CRON] Auto-rejection notification sent to:",
-            userId
-          );
+        //   console.log(
+        //     "[RIDE CRON] Auto-rejection notification sent to:",
+        //     userId
+        //   );
         }
       }
 
