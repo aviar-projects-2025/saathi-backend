@@ -337,7 +337,7 @@ export const sendLoginOtp = async (req, res) => {
                     message: "Please enter a valid Indian mobile number",
                 });
             }
-        } else{
+        } else {
             if (phoneNumber.startsWith("+1")) {
                 // Already correct
             } else if (
@@ -546,28 +546,43 @@ export const verifyLoginOtp = async (req, res) => {
 
         let phoneNumber = mobileNumber.toString().trim();
 
-        if (phoneNumber.startsWith("+91")) {
-            // Already correct
-        } else if (
-            phoneNumber.startsWith("91") &&
-            phoneNumber.length === 12
-        ) {
-            phoneNumber = `+${phoneNumber}`;
+        if (process.env.NODE_ENV === "development") {
+            if (phoneNumber.startsWith("+91")) {
+                // Already correct
+            } else if (
+                phoneNumber.startsWith("91") &&
+                phoneNumber.length === 12
+            ) {
+                phoneNumber = `+${phoneNumber}`;
+            } else {
+                phoneNumber = `+91${phoneNumber}`;
+            }
+
+            if (!/^\+91[6-9]\d{9}$/.test(phoneNumber)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Please enter a valid Indian mobile number",
+                });
+            }
         } else {
-            phoneNumber = `+91${phoneNumber}`;
+            if (phoneNumber.startsWith("+1")) {
+                // Already correct
+            } else if (
+                phoneNumber.startsWith("1") &&
+                phoneNumber.length === 11
+            ) {
+                phoneNumber = `+${phoneNumber}`;
+            } else {
+                phoneNumber = `+1${phoneNumber}`;
+            }
+
+            if (!/^\+1[2-9]\d{9}$/.test(phoneNumber)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Please enter a valid US mobile number",
+                });
+            }
         }
-
-        // =====================================================
-        // VALIDATE MOBILE
-        // =====================================================
-
-        if (!/^\+91[6-9]\d{9}$/.test(phoneNumber)) {
-            return res.status(400).json({
-                success: false,
-                message: "Please enter a valid Indian mobile number",
-            });
-        }
-
         // =====================================================
         // FIND USER
         // =====================================================
