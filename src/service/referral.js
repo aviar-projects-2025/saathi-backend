@@ -19,9 +19,9 @@ export const getReferralService = async (id) => {
 
     const users = await User.find(
         { mobile: { $in: mobiles } },
-        "firstName lastName email createdAt refApprove mobile"
+        "firstName lastName email refApprove mobile profileImage"
     );
-
+      console.log("usernnmkll;;;;",users)
     return referrals.map((referral) => {
 
         const user = users.find(
@@ -34,10 +34,11 @@ export const getReferralService = async (id) => {
             mobile: referral.mobile,
 
             status: referral.status,
-
+            
             firstName: user?.firstName || "",
             lastName: user?.lastName || "",
             email: user?.email || "",
+             profileImage :user?. profileImage || "",
             createdAt: user?.createdAt || referral.createdAt,
             refApprove: user?.refApprove || "",
         };
