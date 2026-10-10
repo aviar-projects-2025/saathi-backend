@@ -5,7 +5,6 @@ import User from "../model/user.js";
 
 export const createRideService = async (data) => {
   const startDate = new Date(data.startTime);
-
   const startOfDay = new Date(startDate);
   startOfDay.setHours(0, 0, 0, 0);
 

@@ -1225,16 +1225,53 @@ export const verifyForgotPasswordOtp = async (req, res) => {
     }
 };
 
+
+const normalizeChangeMobileNumber = (mobileNumber) => {
+    let phoneNumber = mobileNumber.toString().trim();
+
+    if (process.env.NODE_ENV === "development") {
+        if (phoneNumber.startsWith("+91")) {
+            // Already normalized
+        } else if (
+            phoneNumber.startsWith("91") &&
+            phoneNumber.length === 12
+        ) {
+            phoneNumber = `+${phoneNumber}`;
+        } else {
+            phoneNumber = `+91${phoneNumber}`;
+        }
+
+        if (!/^\+91[6-9]\d{9}$/.test(phoneNumber)) {
+            return null;
+        }
+    } else if (process.env.NODE_ENV === "production") {
+        if (phoneNumber.startsWith("+1")) {
+            // Already normalized
+        } else if (
+            phoneNumber.startsWith("1") &&
+            phoneNumber.length === 11
+        ) {
+            phoneNumber = `+${phoneNumber}`;
+        } else {
+            phoneNumber = `+1${phoneNumber}`;
+        }
+
+        if (!/^\+1[2-9]\d{9}$/.test(phoneNumber)) {
+            return null;
+        }
+    } else {
+        return null;
+    }
+
+    return phoneNumber;
+};
+
 export const sendChangeMobileOtp = async (req, res) => {
     try {
         const { mobileNumber } = req.body;
-
-        // =====================================================
-        // AUTHENTICATED USER
-        // =====================================================
-
         const userId = req.user?.userId;
 
+        // AUTHENTICATION
         if (!userId) {
             return res.status(401).json({
                 success: false,
@@ -1242,6 +1279,17 @@ export const sendChangeMobileOtp = async (req, res) => {
             });
         }
 
+        // ENVIRONMENT VALIDATION
+        if (
+            !["development", "production"].includes(process.env.NODE_ENV)
+        ) {
+            return res.status(500).json({
+                success: false,
+                message: "Invalid NODE_ENV configuration",
+            });
+        }
+
+        // REQUIRED FIELD
         if (!mobileNumber) {
             return res.status(400).json({
                 success: false,
@@ -1249,37 +1297,20 @@ export const sendChangeMobileOtp = async (req, res) => {
             });
         }
 
-        // =====================================================
-        // NORMALIZE NEW PHONE NUMBER
-        // =====================================================
-
-        const phoneNumber = normalizeMobileNumber(mobileNumber);
+        // NORMALIZE AND VALIDATE NUMBER
+        const phoneNumber = normalizeChangeMobileNumber(mobileNumber);
 
         if (!phoneNumber) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid mobile number",
+                message:
+                    process.env.NODE_ENV === "development"
+                        ? "Please enter a valid Indian mobile number"
+                        : "Please enter a valid US mobile number",
             });
         }
 
-        // =====================================================
-        // PRODUCTION - ONLY US NUMBERS
-        // =====================================================
-
-        if (
-            process.env.NODE_ENV === "production" &&
-            !phoneNumber.startsWith("+1")
-        ) {
-            return res.status(400).json({
-                success: false,
-                message: "Only US mobile numbers are allowed",
-            });
-        }
-
-        // =====================================================
-        // GET CURRENT USER
-        // =====================================================
-
+        // FIND CURRENT USER
         const user = await User.findById(userId);
 
         if (!user) {
@@ -1289,10 +1320,7 @@ export const sendChangeMobileOtp = async (req, res) => {
             });
         }
 
-        // =====================================================
-        // CHECK IF NEW NUMBER IS SAME AS CURRENT NUMBER
-        // =====================================================
-
+        // CHECK SAME NUMBER
         if (user.mobile === phoneNumber) {
             return res.status(400).json({
                 success: false,
@@ -1301,10 +1329,7 @@ export const sendChangeMobileOtp = async (req, res) => {
             });
         }
 
-        // =====================================================
         // CHECK USER COLLECTION
-        // =====================================================
-
         const existingUser = await User.findOne({
             mobile: phoneNumber,
             _id: { $ne: userId },
@@ -1319,10 +1344,7 @@ export const sendChangeMobileOtp = async (req, res) => {
             });
         }
 
-        // =====================================================
         // CHECK REFERRAL COLLECTION
-        // =====================================================
-
         const existingReferral = await Referral.findOne({
             mobile: phoneNumber,
         });
@@ -1336,10 +1358,7 @@ export const sendChangeMobileOtp = async (req, res) => {
             });
         }
 
-        // =====================================================
-        // DEVELOPMENT
-        // =====================================================
-
+        // DEVELOPMENT OTP
         if (process.env.NODE_ENV === "development") {
             console.log("=================================");
             console.log("Development Change Mobile OTP");
@@ -1356,33 +1375,19 @@ export const sendChangeMobileOtp = async (req, res) => {
             });
         }
 
-        // =====================================================
-        // PRODUCTION
-        // =====================================================
-
-        if (process.env.NODE_ENV === "production") {
-            const verification = await twilioClient.verify.v2
-                .services(process.env.TWILIO_VERIFY_SID)
-                .verifications.create({
-                    to: phoneNumber,
-                    channel: "sms",
-                });
-
-            return res.status(200).json({
-                success: true,
-                status: "OTP_SENT",
-                message: "OTP sent successfully",
-                twilioStatus: verification.status,
+        // PRODUCTION OTP
+        const verification = await twilioClient.verify.v2
+            .services(process.env.TWILIO_VERIFY_SID)
+            .verifications.create({
+                to: phoneNumber,
+                channel: "sms",
             });
-        }
 
-        // =====================================================
-        // INVALID ENVIRONMENT
-        // =====================================================
-
-        return res.status(500).json({
-            success: false,
-            message: "Invalid NODE_ENV configuration",
+        return res.status(200).json({
+            success: true,
+            status: "OTP_SENT",
+            message: "OTP sent successfully",
+            twilioStatus: verification.status,
         });
     } catch (error) {
         console.error("Send Change Mobile OTP Error:", error);
@@ -1394,16 +1399,13 @@ export const sendChangeMobileOtp = async (req, res) => {
     }
 };
 
+
 export const verifyChangeMobileOtp = async (req, res) => {
     try {
         const { mobileNumber, otp } = req.body;
-
-        // =====================================================
-        // AUTHENTICATED USER
-        // =====================================================
-
         const userId = req.user?.userId;
 
+        // AUTHENTICATION
         if (!userId) {
             return res.status(401).json({
                 success: false,
@@ -1411,6 +1413,17 @@ export const verifyChangeMobileOtp = async (req, res) => {
             });
         }
 
+        // ENVIRONMENT VALIDATION
+        if (
+            !["development", "production"].includes(process.env.NODE_ENV)
+        ) {
+            return res.status(500).json({
+                success: false,
+                message: "Invalid NODE_ENV configuration",
+            });
+        }
+
+        // REQUIRED FIELDS
         if (!mobileNumber || !otp) {
             return res.status(400).json({
                 success: false,
@@ -1418,34 +1431,30 @@ export const verifyChangeMobileOtp = async (req, res) => {
             });
         }
 
-        // =====================================================
-        // NORMALIZE PHONE NUMBER
-        // =====================================================
+        const otpValue = otp.toString().trim();
 
-        const phoneNumber = normalizeMobileNumber(mobileNumber);
+        // VALIDATE OTP FORMAT
+        if (!/^\d{6}$/.test(otpValue)) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid 6-digit OTP",
+            });
+        }
+
+        // NORMALIZE AND VALIDATE PHONE NUMBER
+        const phoneNumber = normalizeChangeMobileNumber(mobileNumber);
 
         if (!phoneNumber) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid mobile number",
+                message:
+                    process.env.NODE_ENV === "development"
+                        ? "Please enter a valid Indian mobile number"
+                        : "Please enter a valid US mobile number",
             });
         }
 
-        // =====================================================
-        // OTP VALIDATION
-        // =====================================================
-
-        if (!/^\d{6}$/.test(otp.toString())) {
-            return res.status(400).json({
-                success: false,
-                message: "OTP must be 6 digits",
-            });
-        }
-
-        // =====================================================
-        // GET CURRENT USER
-        // =====================================================
-
+        // FIND CURRENT USER
         const user = await User.findById(userId);
 
         if (!user) {
@@ -1455,10 +1464,7 @@ export const verifyChangeMobileOtp = async (req, res) => {
             });
         }
 
-        // =====================================================
-        // SAME NUMBER CHECK
-        // =====================================================
-
+        // CHECK SAME NUMBER
         if (user.mobile === phoneNumber) {
             return res.status(400).json({
                 success: false,
@@ -1467,62 +1473,31 @@ export const verifyChangeMobileOtp = async (req, res) => {
             });
         }
 
-        // =====================================================
-        // PRODUCTION - ONLY US NUMBERS
-        // =====================================================
-
-        if (
-            process.env.NODE_ENV === "production" &&
-            !phoneNumber.startsWith("+1")
-        ) {
-            return res.status(400).json({
-                success: false,
-                message: "Only US mobile numbers are allowed",
-            });
-        }
-
-        // =====================================================
         // VERIFY OTP
-        // =====================================================
-
         if (process.env.NODE_ENV === "development") {
-            console.log("Development Change Mobile OTP Verification");
-            console.log("User:", userId);
-            console.log("Mobile:", phoneNumber);
-            console.log("OTP:", otp);
-
-            if (otp.toString() !== "123456") {
+            if (otpValue !== "123456") {
                 return res.status(400).json({
                     success: false,
-                    message: "Invalid OTP",
+                    message: "Incorrect code, please try again",
                 });
             }
-        } else if (process.env.NODE_ENV === "production") {
-            const verificationCheck =
-                await twilioClient.verify.v2
-                    .services(process.env.TWILIO_VERIFY_SID)
-                    .verificationChecks.create({
-                        to: phoneNumber,
-                        code: otp.toString(),
-                    });
+        } else {
+            const verificationCheck = await twilioClient.verify.v2
+                .services(process.env.TWILIO_VERIFY_SID)
+                .verificationChecks.create({
+                    to: phoneNumber,
+                    code: otpValue,
+                });
 
             if (verificationCheck.status !== "approved") {
                 return res.status(400).json({
                     success: false,
-                    message: "Invalid or expired OTP",
+                    message: "Incorrect code, please try again",
                 });
             }
-        } else {
-            return res.status(500).json({
-                success: false,
-                message: "Invalid NODE_ENV configuration",
-            });
         }
 
-        // =====================================================
-        // CHECK AGAIN BEFORE UPDATING
-        // =====================================================
-
+        // CHECK NUMBER AVAILABILITY AGAIN
         const existingUser = await User.findOne({
             mobile: phoneNumber,
             _id: { $ne: userId },
@@ -1550,10 +1525,7 @@ export const verifyChangeMobileOtp = async (req, res) => {
             });
         }
 
-        // =====================================================
-        // FIND CURRENT USER'S REFERRAL
-        // =====================================================
-
+        // FIND REFERRAL LINKED TO THE CURRENT NUMBER
         const referral = await Referral.findOne({
             mobile: user.mobile,
         });
@@ -1566,23 +1538,13 @@ export const verifyChangeMobileOtp = async (req, res) => {
             });
         }
 
-        // =====================================================
         // UPDATE USER MOBILE
-        // =====================================================
-
         user.mobile = phoneNumber;
         await user.save();
 
-        // =====================================================
         // UPDATE REFERRAL MOBILE
-        // =====================================================
-
         referral.mobile = phoneNumber;
         await referral.save();
-
-        // =====================================================
-        // SUCCESS
-        // =====================================================
 
         return res.status(200).json({
             success: true,

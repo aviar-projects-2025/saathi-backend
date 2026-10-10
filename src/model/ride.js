@@ -68,12 +68,18 @@ const rideSchema = new mongoose.Schema(
       required: function () {
         return this.modeOfTravel !== "Flight";
       },
-
+      default: function () {
+        return this.modeOfTravel === "Flight" ? 1 : undefined;
+      },
     },
+
     totalSeats: {
       type: Number,
       required: function () {
         return this.modeOfTravel !== "Flight";
+      },
+      default: function () {
+        return this.modeOfTravel === "Flight" ? 1 : undefined;
       },
     },
     fuelSharing: {
