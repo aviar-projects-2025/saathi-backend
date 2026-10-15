@@ -1,11 +1,14 @@
 import express from 'express'
-import { createUser, getUsers, loginUser, getSingleUser, updateProfile, changePassword, getTopRiders, getMe, getPeopleNearby } from '../controller/user.js'
+import { createUser, getUsers, loginUser, getSingleUser, updateProfile, changePassword, getTopRiders, getMe, getPeopleNearby, getMyReferrals } from '../controller/user.js'
 import multer from 'multer';
 import { verifyToken } from '../middleware/auth.js';
 import { getUploadSignature } from '../../config/cloudinary.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
+
+
+router.get("/:id/referrals", getMyReferrals);
 
 // signup Route
 router.post("/", createUser);
@@ -26,8 +29,8 @@ router.post('/update/:userId', updateProfile)
 router.get("/upload-signature", getUploadSignature);
 
 // ✅ dynamic route LAST
-
 router.get("/me", verifyToken, getMe);
 router.get("/:id", getSingleUser);
+
 
 export default router;

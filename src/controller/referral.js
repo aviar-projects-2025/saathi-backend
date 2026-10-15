@@ -31,56 +31,81 @@ export const updateReferrals = async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
-        const approvedUser = await updateService(id, data);
-        const user = await User.findById(id);
 
-        if (!user) {
+        // Validate status value
+        if (
+            !data.refApprove ||
+            !["Approved", "Rejected", "Waiting"].includes(data.refApprove)
+        ) {
+            return res.status(400).json({
+                status: false,
+                message: "Invalid refApprove value",
+            });
+        }
+
+        console.log(id, data,'id, data')
+
+        const approvedUser = await updateService(id, data);
+        console.log(approvedUser,'approvedUser')
+        if (!approvedUser) {
             return res.status(404).json({
                 status: false,
                 message: "User not found",
             });
         }
 
-        if (data.refApprove) {
-            const status = data.refApprove;
+        const user = approvedUser; // they're the same object now
+        const status = data.refApprove;
 
-            const notifType =
-                status === "Approved"
-                    ? "referral_approved"
-                    : "referral_rejected";
+        const notifType =
+            status === "Approved" ? "referral_approved" : "referral_rejected";
 
-            const notif = buildNotification({
-                type: notifType,
-                actorName: "",
-            });
+        const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
 
-            await createNotificationService({
-                userId: user._id,
-                actorId: user.referredBy,
-                type: notifType,
-                ...notif,
-                data: { status },
-            });
+        // ----- Notify the referrer (the person who approved/rejected) -----
+        if (user.referredBy) {
+            try {
+                const notif = buildNotification({
+                    type: notifType,
+                    actorName: fullName,
+                });
 
-            emitNotification(user._id.toString(), {
-                type: notifType,
-                message: notif.message,
-                data: { status },
-            });
+                await createNotificationService({
+                    userId: user.referredBy,
+                    actorId: user._id,
+                    type: notifType,
+                    ...notif,
+                    data: { status },
+                });
 
-            // send mail
-            sendApprovalEmail(
-                approvedUser?.email,
-                approvedUser.firstName + " " + approvedUser.lastName
-            );
+                emitNotification(user.referredBy.toString(), {
+                    type: notifType,
+                    message: notif.message,
+                    data: { status },
+                });
+            } catch (notifErr) {
+                console.error("Notification failed (non-fatal):", notifErr);
+            }
         }
 
-        res.status(200).json({
+        // ----- Email the approved/rejected user -----
+        try {
+            if (status === "Approved") {
+                await sendApprovalEmail(user?.email, fullName);
+            } else if (status === "Rejected") {
+                // await sendRejectionEmail(user?.email, fullName);
+            }
+        } catch (mailErr) {
+            console.error("Approval email failed (non-fatal):", mailErr);
+        }
+
+        return res.status(200).json({
             status: true,
             data: approvedUser,
         });
     } catch (error) {
-        res.status(500).json({
+        console.error("updateReferrals error:", error);
+        return res.status(500).json({
             status: false,
             message: error.message,
         });

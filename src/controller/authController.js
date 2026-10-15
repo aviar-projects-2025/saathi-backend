@@ -10,6 +10,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import twilioClient from '../../config/twilio.js';
 import Referral from '../model/referral.js';
+import ReferralInvitation from '../model/ReferralInvitation.js';
 
 const generateOTP = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -85,27 +86,74 @@ const register = async (req, res) => {
             city,
             language,
             dob,
-            referredBy
+            invitationToken,
         } = req.body;
 
-        const existingUser = await User.findOne({ mobile });
-        if (existingUser) {
+        // 1. Validate required fields
+        if (
+            !firstName ||
+            !lastName ||
+            !password ||
+            !mobile ||
+            !invitationToken
+        ) {
             return res.status(400).json({
                 success: false,
-                message: 'User already exists with this mobile number'
+                message: "Required registration fields are missing",
             });
         }
 
-        const referralCode = generateReferralCode();
+        // 2. Ensure mobile number is not already registered
+        const existingUser = await User.findOne({ mobile });
 
-        let referredById = null;
-        if (referredBy) {
-            const referrer = await User.findOne({ referralCode: referredBy });
-            if (referrer) {
-                referredById = referrer._id;
-            }
+        if (existingUser) {
+            return res.status(400).json({
+                success: false,
+                message: "User already exists with this mobile number",
+            });
         }
 
+        // 3. Hash the invitation token to find its database record
+        const tokenHash = createHash("sha256")
+            .update(invitationToken)
+            .digest("hex");
+
+        const invitation = await ReferralInvitation.findOne({
+            tokenHash,
+            status: "PENDING",
+            expiresAt: { $gt: new Date() },
+        });
+
+        if (!invitation) {
+            return res.status(400).json({
+                success: false,
+                message: "Invitation is invalid, expired, or already used",
+            });
+        }
+
+        // 4. Ensure the invitation is intended for this mobile number
+        // Normalize both values consistently if your app stores country codes.
+        if (invitation.mobile !== mobile) {
+            return res.status(400).json({
+                success: false,
+                message: "This invitation was issued for a different mobile number",
+            });
+        }
+
+        // 5. Ensure the referrer still exists
+        const referrer = await User.findById(invitation.referrerId);
+
+        if (!referrer) {
+            return res.status(400).json({
+                success: false,
+                message: "The person who sent this invitation could not be found",
+            });
+        }
+
+        // 6. Generate the new user's referral code
+        const referralCode = generateReferralCode();
+
+        // 7. Create the user; referral approval remains pending
         const user = new User({
             firstName,
             lastName,
@@ -115,33 +163,60 @@ const register = async (req, res) => {
             bio,
             dob,
             city,
+            language,
             referralCode,
-            referredBy: referredById || null
+            referredBy: referrer._id,
+            refApprove: "Waiting",
         });
 
         await user.save();
 
-        // await sendWelcomeEmail(email, firstName);
+        // 8. Atomically consume the invitation after user creation
+        const claimedInvitation = await ReferralInvitation.findOneAndUpdate(
+            {
+                _id: invitation._id,
+                status: "PENDING",
+                expiresAt: { $gt: new Date() },
+            },
+            {
+                $set: {
+                    status: "USED",
+                    usedBy: user._id,
+                    usedAt: new Date(),
+                },
+            },
+            { new: true }
+        );
 
-        const token = createJWT(user._id, user.email);
+        if (!claimedInvitation) {
+            // Invitation was consumed by another request.
+            await User.deleteOne({ _id: user._id });
 
-        res.status(201).json({
+            return res.status(409).json({
+                success: false,
+                message: "This invitation has already been used. Please request a new invitation.",
+            });
+        }
+
+        return res.status(201).json({
             success: true,
-            message: 'User registered successfully',
-            token,
+            message: "Registration successful. Your account is waiting for approval.",
             user: {
                 id: user._id,
                 firstName: user.firstName,
                 lastName: user.lastName,
                 referralCode: user.referralCode,
-                role: user.role
-            }
+                role: user.role,
+                refApprove: user.refApprove,
+            },
         });
 
     } catch (error) {
-        res.status(500).json({
+        console.error("Registration error:", error);
+
+        return res.status(500).json({
             success: false,
-            message: error.message
+            message: "Registration failed. Please try again.",
         });
     }
 };
@@ -616,6 +691,14 @@ export const verifyLoginOtp = async (req, res) => {
                 success: false,
                 message:
                     "Your account is blocked. Please contact support.",
+            });
+        }
+
+        if (user.refApprove === "Rejected") {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "Your account is Rejected. Please contact referrer.",
             });
         }
 

@@ -1,35 +1,205 @@
+import crypto from "node:crypto";
+import twilioClient from "../../config/twilio.js";
 import Referral from "../model/referral.js"
+import ReferralInvitation from "../model/ReferralInvitation.js";
 import User from "../model/user.js"
+import { randomBytes, createHash } from "node:crypto";
 
 export const createReferral = async (req, res) => {
-    try {
-        const data = { ...req.body }
-           
-           const existingReferral = await Referral.findOne({
-            mobile: data.mobile,
-        });
+    let invitation;
 
-        if (existingReferral) {
+    try {
+        const { mobile, referredBy } = req.body;
+
+        console.log(mobile, referredBy)
+
+        if (!mobile || !referredBy) {
             return res.status(400).json({
                 status: false,
-               message: "This user has already been referred",
+                message: "Mobile number and referrer are required",
             });
         }
 
-        const referral = await Referral.create(data)
+        // Expect a normalized number such as +14155552671 or +919876543210.
+        const normalizedMobile = mobile.replace(/[\s()-]/g, "");
 
-        res.status(201).json({
+        if (!/^\+[1-9]\d{7,14}$/.test(normalizedMobile)) {
+            return res.status(400).json({
+                status: false,
+                message: "Enter a valid international mobile number",
+            });
+        }
+
+        const referrer = await User.findById(referredBy);
+
+        console.log(referrer, 'referrer')
+        if (!referrer) {
+            return res.status(404).json({
+                status: false,
+                message: "Referrer not found",
+            });
+        }
+
+        // Do not invite an existing account.
+        const existingUser = await User.findOne({
+            mobile: normalizedMobile,
+        });
+
+        if (existingUser) {
+            return res.status(409).json({
+                status: false,
+                message: "An account already exists with this mobile number",
+            });
+        }
+
+        // Invalidate previous active invitations for this referrer/number.
+        await ReferralInvitation.updateMany(
+            {
+                referrerId: referrer._id,
+                mobile: normalizedMobile,
+                status: "PENDING",
+            },
+            {
+                $set: { status: "REVOKED" },
+            }
+        );
+
+        // Generate a cryptographically secure, unique token.
+        const token = randomBytes(32).toString("hex");
+
+        const tokenHash = createHash("sha256")
+            .update(token)
+            .digest("hex");
+
+        invitation = await ReferralInvitation.create({
+            referrerId: referrer._id,
+            tokenHash,
+            mobile: normalizedMobile,
+            channel: "SMS",
+            status: "PENDING",
+            expiresAt: new Date(
+                Date.now() + 7 * 24 * 60 * 60 * 1000
+            ),
+            deliveryStatus: "NOT_SENT",
+        });
+
+        const shareLink =
+            `https://saathirides.net/register?ref=${token}`;
+
+        const referrerName =
+            `${referrer.firstName} ${referrer.lastName}`.trim();
+
+        // Send the exact link associated with the saved token.
+        const message = await twilioClient.messages.create({
+            body: `${referrerName} has invited you to join Saathi Rides.
+
+Connect with trusted community members for rides and travel companionship.
+
+Join Saathi Rides: ${shareLink}
+- Saathi Rides`,
+            messagingServiceSid:
+                process.env.TWILIO_MESSAGING_SERVICE_SID,
+            to: normalizedMobile,
+        });
+
+        invitation.deliveryStatus = "SENT";
+        invitation.sentAt = new Date();
+        await invitation.save();
+
+        return res.status(201).json({
             status: true,
-            message: referral
-        })
+            message: "Referral invitation sent successfully",
+            sid: message.sid,
+        });
     } catch (error) {
-        res.status(500).json({
-            status: false,
-            message: "failed to invite"
-        })
-    }
-}
+        console.error("Create referral invitation error:", error);
 
+        // Prevent a failed SMS invitation from remaining active.
+        if (invitation) {
+            try {
+                invitation.deliveryStatus = "FAILED";
+                invitation.status = "REVOKED";
+                await invitation.save();
+            } catch (saveError) {
+                console.error(
+                    "Failed to update invitation:",
+                    saveError
+                );
+            }
+        }
+
+        if (error.code === 11000) {
+            return res.status(409).json({
+                status: false,
+                message: "Unable to create a unique invitation. Please retry.",
+            });
+        }
+
+        return res.status(502).json({
+            status: false,
+            message: "Failed to send referral invitation",
+        });
+    }
+};
+
+export const validateReferralInvitation = async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    console.log()
+
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Invitation token is required",
+      });
+    }
+
+    // The invitation stores a hash, not the raw token.
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const invitation = await ReferralInvitation.findOne({
+      tokenHash,
+      status: "PENDING",
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!invitation) {
+      return res.status(404).json({
+        success: false,
+        message: "This invitation is invalid or has expired",
+      });
+    }
+
+    const referrer = await User.findById(invitation.referrerId)
+      .select("firstName lastName referralCode");
+
+    if (!referrer) {
+      return res.status(404).json({
+        success: false,
+        message: "The person who sent this invitation could not be found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      invitation: {
+        referrerName: `${referrer.firstName} ${referrer.lastName}`.trim(),
+        referralCode: referrer.referralCode,
+      },
+    });
+  } catch (error) {
+    console.error("Validate referral invitation error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to validate invitation",
+    });
+  }
+};
 
 export const findReferral = async (req, res) => {
     try {
