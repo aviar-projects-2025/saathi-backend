@@ -137,10 +137,10 @@ const rideSchema = new mongoose.Schema(
         return this.modeOfTravel === "Flight";
       },
     },
-   ageGroupPreference: {
-  type: String,
-  enum: ["60 and over", "70 and over", "80 and over"],
-},
+    ageGroupPreference: {
+      type: String,
+      enum: ["60 and over", "70 and over", "80 and over"],
+    },
     // label shown in the UI -> value the backend accepts (case-sensitive)
 
     // transitAirport: {
