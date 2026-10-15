@@ -96,12 +96,12 @@ const rideSchema = new mongoose.Schema(
       min: 0,
     },
     // Flight fields
-    fromCountry: {
-      type: String,
-      required: function () {
-        return this.modeOfTravel === "Flight";
-      },
-    },
+    // fromCountry: {
+    //   type: String,
+    //   required: function () {
+    //     return this.modeOfTravel === "Flight";
+    //   },
+    // },
 
     fromAirport: {
       type: String,
@@ -110,12 +110,12 @@ const rideSchema = new mongoose.Schema(
       },
     },
 
-    toCountry: {
-      type: String,
-      required: function () {
-        return this.modeOfTravel === "Flight";
-      },
-    },
+    // toCountry: {
+    //   type: String,
+    //   required: function () {
+    //     return this.modeOfTravel === "Flight";
+    //   },
+    // },
 
     toAirport: {
       type: String,
@@ -137,6 +137,11 @@ const rideSchema = new mongoose.Schema(
         return this.modeOfTravel === "Flight";
       },
     },
+    ageGroupPreference: {
+      type: String,
+      enum: ["60 and over", "70 and over", "80 and over"],
+    },
+    // label shown in the UI -> value the backend accepts (case-sensitive)
 
     // transitAirport: {
     //   type: String,
@@ -152,6 +157,8 @@ const rideSchema = new mongoose.Schema(
         "Women-only companion",
         "Family companion",
         "Regular",
+        "parent",
+        "companion"
       ],
       required: function () {
         return this.modeOfTravel === "Flight";
