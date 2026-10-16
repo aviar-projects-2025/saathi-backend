@@ -276,21 +276,38 @@ export const findReferral = async (req, res) => {
     }
 };
 
+
+const INVITE_LINK_TTL_DAYS = 30;
+const MAX_LINKS_PER_HOUR_PER_USER = 20;
+const MAX_PENDING_LINKS_PER_USER = 10;
+
+/* ─────────────────────────────────────────────
+   HMAC helper — stronger than plain SHA-256
+   ───────────────────────────────────────────── */
+const hashToken = (rawToken) =>
+  crypto
+    .createHmac("sha256", process.env.REFERRAL_HMAC_SECRET)
+    .update(rawToken)
+    .digest("hex");
+
+/* ─────────────────────────────────────────────
+   Controller
+   ───────────────────────────────────────────── */
 export const createInviteLink = async (req, res) => {
   try {
-    const { referredBy } = req.body;
-
-    if (!referredBy) {
-      return res.status(400).json({
+    /* 1. AUTH — referredBy comes from JWT, never from the body */
+    const referrerId = req.user?.id || req.user?.userId || req.user?._id;
+    if (!referrerId) {
+      return res.status(401).json({
         status: false,
-        message: "referrerId is required",
+        message: "Unauthorized",
       });
     }
 
-    const referrer = await User.findById(referredBy).select(
+    /* 2. Confirm the referrer exists */
+    const referrer = await User.findById(referrerId).select(
       "firstName lastName"
     );
-
     if (!referrer) {
       return res.status(404).json({
         status: false,
@@ -298,28 +315,70 @@ export const createInviteLink = async (req, res) => {
       });
     }
 
-    // Always generate a fresh token
-    const rawToken = randomBytes(32).toString("hex");
-    const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+    const now = new Date();
 
+    /* 3. Per-hour cap — blocks click-spam and scripted loops */
+    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const linksLastHour = await ReferralInvitation.countDocuments({
+      referrerId: referrer._id,
+      channel: "LINK",
+      createdAt: { $gt: hourAgo },
+    });
+    if (linksLastHour >= MAX_LINKS_PER_HOUR_PER_USER) {
+      return res.status(429).json({
+        status: false,
+        message:
+          "You've generated too many invite links recently. Please try again in an hour.",
+      });
+    }
+
+    /* 4. Pending cap — enforces the "max 10 pending" rule shown in the UI */
+    const pendingCount = await ReferralInvitation.countDocuments({
+      referrerId: referrer._id,
+      channel: "LINK",
+      status: "PENDING",
+      expiresAt: { $gt: now },
+    });
+    if (pendingCount >= MAX_PENDING_LINKS_PER_USER) {
+      return res.status(400).json({
+        status: false,
+        message: `You already have ${MAX_PENDING_LINKS_PER_USER} active invite links. Share the ones you have before generating more.`,
+      });
+    }
+
+    /* 5. Generate token + hash */
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = hashToken(rawToken);
+
+    /* 6. Persist the invite */
     const invitation = await ReferralInvitation.create({
       referrerId: referrer._id,
       tokenHash,
       mobile: "",
       channel: "LINK",
       status: "PENDING",
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      expiresAt: new Date(
+        now.getTime() + INVITE_LINK_TTL_DAYS * 24 * 60 * 60 * 1000
+      ),
       deliveryStatus: "NOT_SENT",
+      createdFromIp:
+        req.ip ||
+        (req.headers["x-forwarded-for"] || "").split(",")[0].trim(),
+      createdUserAgent: req.headers["user-agent"] || "",
     });
 
-    const base = getFrontendBaseUrl();
-    const shareLink = `${base}/register?ref=${rawToken}`;
+    /* 7. Build the response */
+    const shareLink = `${getFrontendBaseUrl()}/register?ref=${rawToken}`;
 
     return res.status(200).json({
       status: true,
-      token: rawToken,
+      token: rawToken, // returned ONCE — never stored raw
       link: shareLink,
       expiresAt: invitation.expiresAt,
+      remaining: {
+        thisHour: MAX_LINKS_PER_HOUR_PER_USER - linksLastHour - 1,
+        pending: MAX_PENDING_LINKS_PER_USER - pendingCount - 1,
+      },
     });
   } catch (error) {
     console.error("Create invite link error:", error);
