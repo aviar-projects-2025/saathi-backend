@@ -1,6 +1,6 @@
 import express from 'express'
 
-import { createReferral, findReferral, validateReferralInvitation } from '../controller/referralInvite.js'
+import { createInviteLink, createReferral, findReferral, validateReferralInvitation } from '../controller/referralInvite.js'
 
 const router = express.Router();
 
@@ -8,6 +8,7 @@ const router = express.Router();
 router.post('/', createReferral);
 router.get("/validate", validateReferralInvitation);
 router.post('/check', findReferral);
+router.post("/link", createInviteLink);
 
 
 

@@ -5,6 +5,14 @@ import ReferralInvitation from "../model/ReferralInvitation.js";
 import User from "../model/user.js"
 import { randomBytes, createHash } from "node:crypto";
 
+const FRONTEND_URLS = {
+  development: "http://localhost:5173",
+  production: "https://saathirides.net",
+};
+
+const getFrontendBaseUrl = () =>
+  FRONTEND_URLS[process.env.NODE_ENV] || FRONTEND_URLS.development;
+
 export const createReferral = async (req, res) => {
     let invitation;
 
@@ -83,8 +91,7 @@ export const createReferral = async (req, res) => {
             deliveryStatus: "NOT_SENT",
         });
 
-        const shareLink =
-            `https://saathirides.net/register?ref=${token}`;
+        const shareLink = `${getFrontendBaseUrl()}/register?ref=${token}`;
 
         const referrerName =
             `${referrer.firstName} ${referrer.lastName}`.trim();
@@ -267,4 +274,58 @@ export const findReferral = async (req, res) => {
             message: "Failed to find referral",
         });
     }
+};
+
+export const createInviteLink = async (req, res) => {
+  try {
+    const { referredBy } = req.body;
+
+    if (!referredBy) {
+      return res.status(400).json({
+        status: false,
+        message: "referrerId is required",
+      });
+    }
+
+    const referrer = await User.findById(referredBy).select(
+      "firstName lastName"
+    );
+
+    if (!referrer) {
+      return res.status(404).json({
+        status: false,
+        message: "Referrer not found",
+      });
+    }
+
+    // Always generate a fresh token
+    const rawToken = randomBytes(32).toString("hex");
+    const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+
+    const invitation = await ReferralInvitation.create({
+      referrerId: referrer._id,
+      tokenHash,
+      mobile: "",
+      channel: "LINK",
+      status: "PENDING",
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      deliveryStatus: "NOT_SENT",
+    });
+
+    const base = getFrontendBaseUrl();
+    const shareLink = `${base}/register?ref=${rawToken}`;
+
+    return res.status(200).json({
+      status: true,
+      token: rawToken,
+      link: shareLink,
+      expiresAt: invitation.expiresAt,
+    });
+  } catch (error) {
+    console.error("Create invite link error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Unable to generate invite link",
+    });
+  }
 };

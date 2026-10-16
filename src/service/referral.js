@@ -21,7 +21,7 @@ export const getReferralService = async (id) => {
         { mobile: { $in: mobiles } },
         "firstName lastName email refApprove mobile profileImage"
     );
-      console.log("usernnmkll;;;;",users)
+    
     return referrals.map((referral) => {
 
         const user = users.find(
