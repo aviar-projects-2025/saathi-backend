@@ -6,7 +6,7 @@ import User from "../model/user.js"
 import { randomBytes, createHash } from "node:crypto";
 
 const FRONTEND_URLS = {
-  development: "http://localhost:5173",
+  development: "https://saathi-frontend-sl8k.vercel.app",
   production: "https://saathirides.net",
 };
 
