@@ -74,6 +74,7 @@ const createJWT = (userId, email) => {
         { expiresIn: '7d' }
     );
 };
+
 const register = async (req, res) => {
     try {
         const {
@@ -86,17 +87,10 @@ const register = async (req, res) => {
             city,
             language,
             dob,
-            invitationToken,
         } = req.body;
 
         // 1. Validate required fields
-        if (
-            !firstName ||
-            !lastName ||
-            !password ||
-            !mobile ||
-            !invitationToken
-        ) {
+        if (!firstName || !lastName || !password || !mobile) {
             return res.status(400).json({
                 success: false,
                 message: "Required registration fields are missing",
@@ -105,7 +99,6 @@ const register = async (req, res) => {
 
         // 2. Ensure mobile number is not already registered
         const existingUser = await User.findOne({ mobile });
-
         if (existingUser) {
             return res.status(400).json({
                 success: false,
@@ -113,36 +106,27 @@ const register = async (req, res) => {
             });
         }
 
-        // 3. Hash the invitation token to find its database record
-        const tokenHash = createHash("sha256")
-            .update(invitationToken)
-            .digest("hex");
+        // 3. Find the verified Referral document
+        // Because sendOtp and verifyOtp already did the heavy lifting, 
+        // we just need to check if this number has a verified referral.
+        const referral = await Referral.findOne({ mobile: mobile });
 
-        const invitation = await ReferralInvitation.findOne({
-            tokenHash,
-            status: "PENDING",
-            expiresAt: { $gt: new Date() },
-        });
-
-        if (!invitation) {
+        if (!referral) {
             return res.status(400).json({
                 success: false,
-                message: "Invitation is invalid, expired, or already used",
+                message: "No referral record found for this number.",
             });
         }
 
-        // 4. Ensure the invitation is intended for this mobile number
-        // Normalize both values consistently if your app stores country codes.
-        if (invitation.mobile !== mobile) {
+        if (referral.status !== "Verified") {
             return res.status(400).json({
                 success: false,
-                message: "This invitation was issued for a different mobile number",
+                message: "Please verify your mobile number first.",
             });
         }
 
-        // 5. Ensure the referrer still exists
-        const referrer = await User.findById(invitation.referrerId);
-
+        // 4. Check if referrer still exists
+        const referrer = await User.findById(referral.referredBy);
         if (!referrer) {
             return res.status(400).json({
                 success: false,
@@ -150,14 +134,14 @@ const register = async (req, res) => {
             });
         }
 
-        // 6. Generate the new user's referral code
+        // 5. Generate the new user's referral code
         const referralCode = generateReferralCode();
 
-        // 7. Create the user; referral approval remains pending
+        // 6. Create the user
         const user = new User({
             firstName,
             lastName,
-            password,
+            password, // Make sure this is hashed before saving! (Assuming your User model does it)
             gender,
             mobile,
             bio,
@@ -166,37 +150,13 @@ const register = async (req, res) => {
             language,
             referralCode,
             referredBy: referrer._id,
-            refApprove: "Waiting",
+            refApprove: "Waiting", // Still needs approval from the referrer
         });
 
         await user.save();
 
-        // 8. Atomically consume the invitation after user creation
-        const claimedInvitation = await ReferralInvitation.findOneAndUpdate(
-            {
-                _id: invitation._id,
-                status: "PENDING",
-                expiresAt: { $gt: new Date() },
-            },
-            {
-                $set: {
-                    status: "USED",
-                    usedBy: user._id,
-                    usedAt: new Date(),
-                },
-            },
-            { new: true }
-        );
-
-        if (!claimedInvitation) {
-            // Invitation was consumed by another request.
-            await User.deleteOne({ _id: user._id });
-
-            return res.status(409).json({
-                success: false,
-                message: "This invitation has already been used. Please request a new invitation.",
-            });
-        }
+        // Note: We do NOT consume the Referral here.
+        // It stays as "Verified" so that this user can log in later using sendLoginOtp.
 
         return res.status(201).json({
             success: true,
@@ -213,7 +173,6 @@ const register = async (req, res) => {
 
     } catch (error) {
         console.error("Registration error:", error);
-
         return res.status(500).json({
             success: false,
             message: "Registration failed. Please try again.",
@@ -221,107 +180,131 @@ const register = async (req, res) => {
     }
 };
 
- const sendOtp = async (req, res) => {
-  try {
-    const { mobileNumber, invitationToken } = req.body;
+const sendOtp = async (req, res) => {
+    try {
+        const { mobileNumber, invitationToken } = req.body;
 
-    if (!mobileNumber) {
-      return res.status(400).json({ success: false, message: "Mobile number is required" });
-    }
-
-    const phoneNumber = normalizeMobileNumber(mobileNumber);
-    if (!phoneNumber) {
-      return res.status(400).json({ success: false, message: "Invalid mobile number" });
-    }
-
-    /* ── 1. Check if this user is already registered ── */
-    const existingUser = await User.findOne({ mobile: phoneNumber });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        status: "ALREADY_REGISTERED",
-        message: "An account already exists with this mobile number. Please log in.",
-      });
-    }
-
-    /* ── 2. Check the Invitation Token (for Copied Links & SMS) ── */
-    let isTokenValid = false;
-    
-    if (invitationToken) {
-      // A. Try permanent User token (Copied Link)
-      const userByToken = await User.findOne({ inviteToken: invitationToken });
-      if (userByToken) {
-        isTokenValid = true;
-      } else {
-        // B. Try SMS token (Legacy)
-        const tokenHash = crypto.createHash("sha256").update(invitationToken).digest("hex");
-        const smsInvite = await ReferralInvitation.findOne({
-          tokenHash,
-          status: "PENDING",
-          expiresAt: { $gt: new Date() },
-        });
-        if (smsInvite) {
-          isTokenValid = true;
+        if (!mobileNumber) {
+            return res.status(400).json({ success: false, message: "Mobile number is required" });
         }
-      }
+
+        const phoneNumber = normalizeMobileNumber(mobileNumber);
+        if (!phoneNumber) {
+            return res.status(400).json({ success: false, message: "Invalid mobile number" });
+        }
+
+        /* ── 1. Check if this user is already registered ── */
+        const existingUser = await User.findOne({ mobile: phoneNumber });
+        if (existingUser) {
+            return res.status(400).json({
+                success: false,
+                status: "ALREADY_REGISTERED",
+                message: "An account already exists with this mobile number. Please log in.",
+            });
+        }
+
+        /* ── 2. Check the Invitation Token (for Copied Links & SMS) ── */
+        let isTokenValid = false;
+        let referrerId = null;
+        let channel = "SMS";
+
+        if (invitationToken) {
+            // A. Try permanent User token (Copied Link)
+            const userByToken = await User.findOne({ inviteToken: invitationToken });
+            if (userByToken) {
+                isTokenValid = true;
+                referrerId = userByToken._id;
+                channel = "LINK";
+            } else {
+                // B. Try SMS token (Legacy)
+                const tokenHash = crypto.createHash("sha256").update(invitationToken).digest("hex");
+                const smsInvite = await ReferralInvitation.findOne({
+                    tokenHash,
+                    status: "PENDING",
+                    expiresAt: { $gt: new Date() },
+                });
+                if (smsInvite) {
+                    isTokenValid = true;
+                    referrerId = smsInvite.referrerId;
+                    channel = "SMS";
+                }
+            }
+        }
+
+        /* ── 3. Fallback: Check Referral collection directly ── */
+        if (!isTokenValid) {
+            const referral = await Referral.findOne({ mobile: phoneNumber });
+            if (!referral) {
+                return res.status(404).json({
+                    success: false,
+                    status: "NOT_FOUND",
+                    message: "No valid invitation found. Please use your invite link.",
+                });
+            }
+            // If they are already verified in the Referral table, just let them login
+            if (referral.status === "Verified") {
+                return res.status(200).json({
+                    success: true,
+                    status: "VERIFIED",
+                    message: "Your mobile number is already verified. Please log in.",
+                });
+            }
+        }
+
+        /* ── 4. CREATE REFERRAL DOCUMENT (If coming from a valid link) ── */
+        if (isTokenValid && referrerId) {
+            const existingReferral = await Referral.findOne({ mobile: phoneNumber });
+
+            if (!existingReferral) {
+                // Create a new referral record for this phone number
+                await Referral.create({
+                    referredBy: referrerId,
+                    mobile: phoneNumber,
+                    status: "Waiting", // Will become "Verified" upon OTP success
+                });
+            } else if (existingReferral.referredBy.toString() !== referrerId.toString()) {
+                // Edge case: Someone else referred them first.
+                // You can choose to overwrite, or block. Let's overwrite for now.
+                existingReferral.referredBy = referrerId;
+                existingReferral.status = "Waiting";
+                await existingReferral.save();
+            }
+        }
+
+        /* ── 5. Send OTP ── */
+        const isDevelopment = process.env.NODE_ENV === "development";
+        const isProduction = process.env.NODE_ENV === "production";
+
+        if (isDevelopment) {
+            return res.status(200).json({
+                success: true,
+                status: "OTP_SENT",
+                message: "OTP sent successfully (Dev mode: use 123456)",
+                development: true,
+            });
+        }
+
+        if (isProduction) {
+            const verification = await twilioClient.verify.v2
+                .services(process.env.TWILIO_VERIFY_SID)
+                .verifications.create({
+                    to: phoneNumber,
+                    channel: "sms",
+                });
+
+            return res.status(200).json({
+                success: true,
+                status: "OTP_SENT",
+                message: "OTP sent successfully",
+                twilioStatus: verification.status,
+            });
+        }
+
+        return res.status(500).json({ success: false, message: "Invalid NODE_ENV configuration" });
+    } catch (error) {
+        console.error("Send OTP Error:", error);
+        return res.status(500).json({ success: false, message: "Failed to send OTP" });
     }
-
-    /* ── 3. If token is invalid, fallback to Referral collection check ── */
-    /* (This preserves backwards compatibility for users who got a raw SMS without a token) */
-    if (!isTokenValid) {
-      const referral = await Referral.findOne({ mobile: phoneNumber });
-      
-      if (!referral) {
-        return res.status(404).json({
-          success: false,
-          status: "NOT_FOUND",
-          message: "No valid invitation found. Please use your invite link.",
-        });
-      }
-
-      if (referral.status === "Verified") {
-        return res.status(200).json({
-          success: true,
-          status: "VERIFIED",
-          message: "Your mobile number is already verified. Please log in.",
-        });
-      }
-    }
-
-    /* ── 4. Send OTP ── */
-    const isDevelopment = process.env.NODE_ENV === "development";
-    const isProduction = process.env.NODE_ENV === "production";
-
-    if (isDevelopment) {
-      return res.status(200).json({
-        success: true,
-        status: "OTP_SENT",
-        message: "OTP sent successfully (Dev mode: use 123456)",
-        development: true,
-      });
-    }
-
-    if (isProduction) {
-      const verification = await twilioClient.verify.v2
-        .services(process.env.TWILIO_VERIFY_SID)
-        .verifications.create({
-          to: phoneNumber,
-          channel: "sms",
-        });
-
-      return res.status(200).json({
-        success: true,
-        status: "OTP_SENT",
-        message: "OTP sent successfully",
-        twilioStatus: verification.status,
-      });
-    }
-
-    return res.status(500).json({ success: false, message: "Invalid NODE_ENV configuration" });
-  } catch (error) {
-    console.error("Send OTP Error:", error);
-    return res.status(500).json({ success: false, message: "Failed to send OTP" });
-  }
 };
 
 const login = async (req, res) => {
