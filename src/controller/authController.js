@@ -221,106 +221,107 @@ const register = async (req, res) => {
     }
 };
 
-const sendOtp = async (req, res) => {
-    try {
-        const { mobileNumber } = req.body;
+ const sendOtp = async (req, res) => {
+  try {
+    const { mobileNumber, invitationToken } = req.body;
 
-        if (!mobileNumber) {
-            return res.status(400).json({
-                success: false,
-                message: "Mobile number is required",
-            });
-        }
-
-        const phoneNumber = normalizeMobileNumber(mobileNumber);
-
-        if (!phoneNumber) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid mobile number",
-            });
-        }
-
-        const referral = await Referral.findOne({
-            mobile: phoneNumber,
-        });
-
-        if (!referral) {
-            return res.status(404).json({
-                success: false,
-                status: "NOT_FOUND",
-                message:
-                    "No referral found for this mobile number. Please get a referral to sign up.",
-            });
-        }
-
-        if (referral.status === "Verified") {
-            return res.status(200).json({
-                success: true,
-                status: "VERIFIED",
-                message:
-                    "Your mobile number is already verified. Please login.",
-            });
-        }
-
-        if (referral.status === "Waiting") {
-            const isDevelopment =
-                process.env.NODE_ENV === "development";
-
-            const isProduction =
-                process.env.NODE_ENV === "production";
-
-            if (isDevelopment) {
-                // console.log("=================================");
-                // console.log("Development Login OTP");
-                // console.log("Mobile:", phoneNumber);
-                // console.log("OTP: 123456");
-                // console.log("=================================");
-
-                return res.status(200).json({
-                    success: true,
-                    status: "OTP_SENT",
-                    message: "OTP sent successfully",
-                    development: true,
-                });
-            }
-
-            if (isProduction) {
-                const verification = await twilioClient.verify.v2
-                    .services(process.env.TWILIO_VERIFY_SID)
-                    .verifications.create({
-                        to: phoneNumber,
-                        channel: "sms",
-                    });
-
-                return res.status(200).json({
-                    success: true,
-                    status: "OTP_SENT",
-                    message: "OTP sent successfully",
-                    twilioStatus: verification.status,
-                });
-            }
-
-            return res.status(500).json({
-                success: false,
-                message: "Invalid NODE_ENV configuration",
-            });
-        }
-
-        return res.status(400).json({
-            success: false,
-            status: referral.status,
-            message:
-                "Invalid referral status. Please contact support.",
-        });
-    } catch (error) {
-        console.error("Send Login OTP Error:", error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Failed to send OTP",
-        });
+    if (!mobileNumber) {
+      return res.status(400).json({ success: false, message: "Mobile number is required" });
     }
+
+    const phoneNumber = normalizeMobileNumber(mobileNumber);
+    if (!phoneNumber) {
+      return res.status(400).json({ success: false, message: "Invalid mobile number" });
+    }
+
+    /* ── 1. Check if this user is already registered ── */
+    const existingUser = await User.findOne({ mobile: phoneNumber });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        status: "ALREADY_REGISTERED",
+        message: "An account already exists with this mobile number. Please log in.",
+      });
+    }
+
+    /* ── 2. Check the Invitation Token (for Copied Links & SMS) ── */
+    let isTokenValid = false;
+    
+    if (invitationToken) {
+      // A. Try permanent User token (Copied Link)
+      const userByToken = await User.findOne({ inviteToken: invitationToken });
+      if (userByToken) {
+        isTokenValid = true;
+      } else {
+        // B. Try SMS token (Legacy)
+        const tokenHash = crypto.createHash("sha256").update(invitationToken).digest("hex");
+        const smsInvite = await ReferralInvitation.findOne({
+          tokenHash,
+          status: "PENDING",
+          expiresAt: { $gt: new Date() },
+        });
+        if (smsInvite) {
+          isTokenValid = true;
+        }
+      }
+    }
+
+    /* ── 3. If token is invalid, fallback to Referral collection check ── */
+    /* (This preserves backwards compatibility for users who got a raw SMS without a token) */
+    if (!isTokenValid) {
+      const referral = await Referral.findOne({ mobile: phoneNumber });
+      
+      if (!referral) {
+        return res.status(404).json({
+          success: false,
+          status: "NOT_FOUND",
+          message: "No valid invitation found. Please use your invite link.",
+        });
+      }
+
+      if (referral.status === "Verified") {
+        return res.status(200).json({
+          success: true,
+          status: "VERIFIED",
+          message: "Your mobile number is already verified. Please log in.",
+        });
+      }
+    }
+
+    /* ── 4. Send OTP ── */
+    const isDevelopment = process.env.NODE_ENV === "development";
+    const isProduction = process.env.NODE_ENV === "production";
+
+    if (isDevelopment) {
+      return res.status(200).json({
+        success: true,
+        status: "OTP_SENT",
+        message: "OTP sent successfully (Dev mode: use 123456)",
+        development: true,
+      });
+    }
+
+    if (isProduction) {
+      const verification = await twilioClient.verify.v2
+        .services(process.env.TWILIO_VERIFY_SID)
+        .verifications.create({
+          to: phoneNumber,
+          channel: "sms",
+        });
+
+      return res.status(200).json({
+        success: true,
+        status: "OTP_SENT",
+        message: "OTP sent successfully",
+        twilioStatus: verification.status,
+      });
+    }
+
+    return res.status(500).json({ success: false, message: "Invalid NODE_ENV configuration" });
+  } catch (error) {
+    console.error("Send OTP Error:", error);
+    return res.status(500).json({ success: false, message: "Failed to send OTP" });
+  }
 };
 
 const login = async (req, res) => {

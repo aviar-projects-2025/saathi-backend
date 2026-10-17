@@ -78,4 +78,5 @@ const ReferralInvitation = mongoose.model(
   referralInvitationSchema
 );
 
+
 export default ReferralInvitation;

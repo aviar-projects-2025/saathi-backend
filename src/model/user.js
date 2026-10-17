@@ -47,6 +47,13 @@ const userSchema = new mongoose.Schema({
         required: true,
     },
 
+    inviteToken: {
+        type: String,
+        default: null,
+        unique: true,
+        sparse: true, // ← critical: allows multiple users with null
+    },
+
     referredBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
@@ -72,9 +79,9 @@ const userSchema = new mongoose.Schema({
     messageNumber: {
         type: String,
     },
-       language: {
-      type: [String],
-       }
+    language: {
+        type: [String],
+    }
     // isVerified: {
     //   type: Boolean,
     //   default: false,

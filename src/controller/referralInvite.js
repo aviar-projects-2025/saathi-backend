@@ -152,9 +152,6 @@ Join Saathi Rides: ${shareLink}
 export const validateReferralInvitation = async (req, res) => {
   try {
     const { token } = req.query;
-
-    console.log()
-
     if (!token || typeof token !== "string") {
       return res.status(400).json({
         success: false,
@@ -162,12 +159,22 @@ export const validateReferralInvitation = async (req, res) => {
       });
     }
 
-    // The invitation stores a hash, not the raw token.
-    const tokenHash = crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
+    /* ── 1. Try permanent user token (LINK channel) ── */
+    const userByToken = await User.findOne({ inviteToken: token }).select(
+      "firstName lastName referralCode"
+    );
+    if (userByToken) {
+      return res.status(200).json({
+        success: true,
+        invitation: {
+          referrerName: `${userByToken.firstName} ${userByToken.lastName}`.trim(),
+          referralCode: userByToken.referralCode,
+        },
+      });
+    }
 
+    /* ── 2. Fallback: expiring SMS token ── */
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const invitation = await ReferralInvitation.findOne({
       tokenHash,
       status: "PENDING",
@@ -181,8 +188,9 @@ export const validateReferralInvitation = async (req, res) => {
       });
     }
 
-    const referrer = await User.findById(invitation.referrerId)
-      .select("firstName lastName referralCode");
+    const referrer = await User.findById(invitation.referrerId).select(
+      "firstName lastName referralCode"
+    );
 
     if (!referrer) {
       return res.status(404).json({
@@ -200,7 +208,6 @@ export const validateReferralInvitation = async (req, res) => {
     });
   } catch (error) {
     console.error("Validate referral invitation error:", error);
-
     return res.status(500).json({
       success: false,
       message: "Unable to validate invitation",
@@ -295,7 +302,6 @@ const hashToken = (rawToken) =>
    ───────────────────────────────────────────── */
 export const createInviteLink = async (req, res) => {
   try {
-    /* 1. AUTH — referredBy comes from JWT, never from the body */
     const referrerId = req.user?.id || req.user?.userId || req.user?._id;
     if (!referrerId) {
       return res.status(401).json({
@@ -304,10 +310,11 @@ export const createInviteLink = async (req, res) => {
       });
     }
 
-    /* 2. Confirm the referrer exists */
     const referrer = await User.findById(referrerId).select(
-      "firstName lastName"
+      "firstName lastName referralCode inviteToken"
     );
+
+
     if (!referrer) {
       return res.status(404).json({
         status: false,
@@ -315,70 +322,20 @@ export const createInviteLink = async (req, res) => {
       });
     }
 
-    const now = new Date();
-
-    /* 3. Per-hour cap — blocks click-spam and scripted loops */
-    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-    const linksLastHour = await ReferralInvitation.countDocuments({
-      referrerId: referrer._id,
-      channel: "LINK",
-      createdAt: { $gt: hourAgo },
-    });
-    if (linksLastHour >= MAX_LINKS_PER_HOUR_PER_USER) {
-      return res.status(429).json({
-        status: false,
-        message:
-          "You've generated too many invite links recently. Please try again in an hour.",
-      });
+    // Generate a permanent token on first use
+    if (!referrer.inviteToken) {
+      referrer.inviteToken = crypto.randomBytes(32).toString("hex");
+    //   console.log(referrer.inviteToken,'referrer.inviteToken')
+      await referrer.save();
     }
 
-    /* 4. Pending cap — enforces the "max 10 pending" rule shown in the UI */
-    const pendingCount = await ReferralInvitation.countDocuments({
-      referrerId: referrer._id,
-      channel: "LINK",
-      status: "PENDING",
-      expiresAt: { $gt: now },
-    });
-    if (pendingCount >= MAX_PENDING_LINKS_PER_USER) {
-      return res.status(400).json({
-        status: false,
-        message: `You already have ${MAX_PENDING_LINKS_PER_USER} active invite links. Share the ones you have before generating more.`,
-      });
-    }
-
-    /* 5. Generate token + hash */
-    const rawToken = crypto.randomBytes(32).toString("hex");
-    const tokenHash = hashToken(rawToken);
-
-    /* 6. Persist the invite */
-    const invitation = await ReferralInvitation.create({
-      referrerId: referrer._id,
-      tokenHash,
-      mobile: "",
-      channel: "LINK",
-      status: "PENDING",
-      expiresAt: new Date(
-        now.getTime() + INVITE_LINK_TTL_DAYS * 24 * 60 * 60 * 1000
-      ),
-      deliveryStatus: "NOT_SENT",
-      createdFromIp:
-        req.ip ||
-        (req.headers["x-forwarded-for"] || "").split(",")[0].trim(),
-      createdUserAgent: req.headers["user-agent"] || "",
-    });
-
-    /* 7. Build the response */
-    const shareLink = `${getFrontendBaseUrl()}/register?ref=${rawToken}`;
+    const link = `${getFrontendBaseUrl()}/register?ref=${referrer.inviteToken}`;
 
     return res.status(200).json({
       status: true,
-      token: rawToken, // returned ONCE — never stored raw
-      link: shareLink,
-      expiresAt: invitation.expiresAt,
-      remaining: {
-        thisHour: MAX_LINKS_PER_HOUR_PER_USER - linksLastHour - 1,
-        pending: MAX_PENDING_LINKS_PER_USER - pendingCount - 1,
-      },
+      token: referrer.inviteToken,
+      link,
+      referralCode: referrer.referralCode,
     });
   } catch (error) {
     console.error("Create invite link error:", error);

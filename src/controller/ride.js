@@ -16,7 +16,6 @@ import User from "../model/user.js";
 export const createRide = async (req, res) => {
     try {
         const ride = await createRideService(req.body);
-
         if (ride) {
             const newRideUpdate = buildNotification({ type: "new_ride_added" });
 
