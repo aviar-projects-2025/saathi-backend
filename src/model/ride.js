@@ -17,7 +17,17 @@ const rideSchema = new mongoose.Schema(
       default: "offer",
       index: true,
     },
+    actualDriver: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
 
+    helpProposalId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "HelpProposal",
+      default: null,
+    },
     /* ─────────── Trip basics ─────────── */
     modeOfTravel: {
       type: String,
@@ -96,10 +106,10 @@ const rideSchema = new mongoose.Schema(
       default: "None",
     },
 
-    childFriendly:   { type: Boolean, default: false },
-    recurringRide:   { type: Boolean, default: false },
-    womenOnly:       { type: Boolean, default: false },
-    helpCanOffer:    { type: [String], default: [] },
+    childFriendly: { type: Boolean, default: false },
+    recurringRide: { type: Boolean, default: false },
+    womenOnly: { type: Boolean, default: false },
+    helpCanOffer: { type: [String], default: [] },
 
     /* ─────────── Request-only ─────────── */
     flexibility: {
@@ -108,13 +118,13 @@ const rideSchema = new mongoose.Schema(
       default: "",
     },
     passengers: { type: Number, default: 1, min: 1, max: 7 },
-    bags:       { type: Number, default: 0, min: 0, max: 10 },
-    womenDriversOnly:   { type: Boolean, default: false },
+    bags: { type: Number, default: 0, min: 0, max: 10 },
+    womenDriversOnly: { type: Boolean, default: false },
     travelingWithChild: { type: Boolean, default: false },
 
     /* ─────────── Private ─────────── */
-    exactPickup:        { type: String, default: "" },
-    notes:              { type: String, default: "" },
+    exactPickup: { type: String, default: "" },
+    notes: { type: String, default: "" },
     confirmCostSharing: { type: Boolean, default: false },
 
     /* ─────────── Flight fields (kept) ─────────── */
@@ -169,9 +179,9 @@ const rideSchema = new mongoose.Schema(
       default: "Any",
     },
     medicalAssistance: { type: Boolean, default: false },
-    languageSupport:   { type: Boolean, default: false },
-    transitHelp:       { type: Boolean, default: false },
-    baggageHelp:       { type: Boolean, default: false },
+    languageSupport: { type: Boolean, default: false },
+    transitHelp: { type: Boolean, default: false },
+    baggageHelp: { type: Boolean, default: false },
 
     genderPreference: {
       type: String,

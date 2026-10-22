@@ -12,6 +12,8 @@ import notificationRoutes from "./src/routes/notificationRouter.js"
 import authRoutes from './src/routes/authRoutes.js'
 import savePost from "./src/routes/savedPost.js"
 import referralInvite from "./src/routes/referralInvite.js"
+import travelBuddy from "./src/routes/travelBuddy.js"
+import helpProposalRoutes from "./src/routes/helpProposalRoutes.js"
 
 
 
@@ -61,6 +63,9 @@ app.use("/api/v1/notification", notificationRoutes)
 app.use('/api/v1/auth', authRoutes);
 app.use("/api/v1/save-post", savePost)
 app.use("/api/v1/referralInvite", referralInvite)
+app.use("/api/v1/travel-buddy", travelBuddy)
+app.use("/api/v1/help-proposals", helpProposalRoutes);
+
 
 
 
