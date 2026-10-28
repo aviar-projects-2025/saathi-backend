@@ -15,6 +15,8 @@ import { buildNotification, createNotificationService } from '../service/notific
 import { emitNotification } from '../../socket.js';
 import { sendWelcomePendingEmail } from '../../config/sendMail.js';
 import mongoose from 'mongoose';
+import { getRegistrationSession } from '../../config/registrationSession.js';
+import { getProfileImageSignedUrl } from './s3Controller.js';
 
 // Token Generation
 export const generateToken = (user) => {
@@ -31,124 +33,189 @@ export const generateToken = (user) => {
   );
 };
 
+
 export const createUser = async (req, res) => {
   try {
+    const authHeader = req.headers.authorization || "";
+    const match = authHeader.match(/^Bearer (.+)$/i);
+
+    if (!match) {
+      return res.status(401).json({
+        success: false,
+        message: "Registration credential required",
+      });
+    }
+
+    const registration = await getRegistrationSession(match[1]);
+
+    if (!registration) {
+      return res.status(401).json({
+        success: false,
+        message: "Registration session is invalid, expired, or already used",
+      });
+    }
+
     const {
       firstName,
       lastName,
       dob,
-      mobile,
-      referralCode,
       gender,
       city,
       languages,
-      profileImage,
-      imagePublicId,
-    } = req.body;
+    } = req.body || {};
 
-    // ---------- Referrer lookup ----------
-    let referredBy = null;
-    if (referralCode) {
-      const referredUser = await User.findOne({ referralCode });
-      if (!referredUser) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid referral code",
-        });
-      }
-      referredBy = referredUser._id;
+    if (
+      typeof firstName !== "string" ||
+      !firstName.trim() ||
+      typeof lastName !== "string" ||
+      !lastName.trim() ||
+      typeof city !== "string" ||
+      !city.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "First name, last name and city are required",
+      });
     }
 
-    // ---------- Duplicate mobile check ----------
-    if (mobile) {
-      const mobileUser = await User.findOne({ mobile });
-      if (mobileUser) {
-        return res.status(400).json({
-          success: false,
-          message: "Mobile number already exist!",
-        });
-      }
+    if (!registration.profileImageKey) {
+      return res.status(400).json({
+        success: false,
+        message: "Please upload your profile photo first",
+      });
     }
 
-    // ---------- Generate own referral code ----------
-    const myReferralCode =
-      firstName.substring(0, 3).toUpperCase() +
-      Math.floor(1000 + Math.random() * 9000);
+    const expectedPrefix =
+      `profiles/registration/${registration._id}/`;
 
-    // ---------- Normalize languages ----------
+    if (!registration.profileImageKey.startsWith(expectedPrefix)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid profile image key",
+      });
+    }
+
+    // The phone number and referrer come from the verified session.
+    const mobile = registration.mobile;
+    const referredBy = registration.referredBy;
+
+    const [existingUser, referrer] = await Promise.all([
+      User.findOne({ mobile }),
+      User.findById(referredBy).select("_id referralCode"),
+    ]);
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "An account already exists with this mobile number",
+      });
+    }
+
+    if (!referrer) {
+      return res.status(400).json({
+        success: false,
+        message: "The referring account no longer exists",
+      });
+    }
+
+    const cleanFirstName = firstName.trim();
+    const cleanLastName = lastName.trim();
+
     let parsedLanguages = [];
+
     if (Array.isArray(languages)) {
-      parsedLanguages = languages;
+      parsedLanguages = languages.filter(
+        (value) => typeof value === "string"
+      );
     } else if (typeof languages === "string") {
       try {
-        parsedLanguages = JSON.parse(languages);
+        const parsed = JSON.parse(languages);
+        if (Array.isArray(parsed)) {
+          parsedLanguages = parsed.filter(
+            (value) => typeof value === "string"
+          );
+        }
       } catch {
         parsedLanguages = [];
       }
     }
 
-    // ---------- Create user ----------
+    const myReferralCode =
+      cleanFirstName.substring(0, 3).toUpperCase() +
+      Math.floor(1000 + Math.random() * 9000);
+
+    // Keep the pending approval workflow.
     const user = await userCreateService({
-      firstName,
-      lastName,
+      firstName: cleanFirstName,
+      lastName: cleanLastName,
       dob,
       mobile,
       gender: gender || "",
-      city: city || "",
+      city: city.trim(),
       language: parsedLanguages,
-      profileImage: profileImage || "",
-      imagePublicId: imagePublicId || "",
+      profileImage: registration.profileImageKey,
+      imagePublicId: "",
       referralCode: myReferralCode,
       referredBy,
       refApprove: "Waiting",
     });
 
-    // ---------- Notify referrer ----------
-    if (referredBy) {
-      try {
-        const actorName = firstName;
-        const notif = buildNotification({
-          type: "referral_pending",
-          actorName,
-        });
+    // Mark the registration credential as consumed.
+    registration.completedAt = new Date();
+    await registration.save();
 
-        const notification = await createNotificationService({
-          userId: referredBy,
-          actorId: user._id,
-          type: "referral_approved",
-          category: "New Referral",
-          ...notif,
-          data: { userId: user._id },
-        });
+    // Preserve the existing referrer notification behavior.
+    try {
+      const notif = buildNotification({
+        type: "referral_pending",
+        actorName: cleanFirstName,
+      });
 
-        emitNotification(referredBy.toString(), {
-          type: "referral_approved",
-          message: notif.message,
-          category: "New Referral",
-          data: {
-            _id: notification._id,
-            userId: user._id,
-            user,
-          },
-        });
-      } catch (notifErr) {
-        console.error("Notification failed (non-fatal):", notifErr);
-      }
+      const notification = await createNotificationService({
+        userId: referredBy,
+        actorId: user._id,
+        type: "referral_approved",
+        category: "New Referral",
+        ...notif,
+        data: { userId: user._id },
+      });
+
+      emitNotification(referredBy.toString(), {
+        type: "referral_approved",
+        message: notif.message,
+        category: "New Referral",
+        data: {
+          _id: notification._id,
+          userId: user._id,
+        },
+      });
+    } catch (notificationError) {
+      console.error(
+        "Registration notification failed:",
+        notificationError
+      );
     }
 
     return res.status(201).json({
       success: true,
-      message: "User created successfully",
-      data: user,
+      message: "Registration submitted. Waiting for referrer approval.",
+      data: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        refApprove: user.refApprove,
+      },
     });
   } catch (error) {
     console.error("createUser error:", error);
+
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Registration failed. Please try again.",
     });
   }
 };
+
 // get All Users
 export const getUsers = async (req, res) => {
   try {
@@ -169,24 +236,49 @@ export const getUsers = async (req, res) => {
 
 // get user by id;
 export const getSingleUser = async (req, res) => {
-
   try {
-
     const { id } = req.params;
     const user = await getUserById(id);
 
-    res.status(200).json({
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Support both Mongoose documents and plain objects
+    const userData =
+      typeof user.toObject === "function"
+        ? user.toObject()
+        : { ...user };
+
+    let profileImageUrl = null;
+
+    if (userData.profileImage) {
+      try {
+        profileImageUrl = await getProfileImageSignedUrl(
+          userData.profileImage
+        );
+      } catch (error) {
+        console.error("Failed to generate profile image URL:", error);
+      }
+    }
+
+    return res.status(200).json({
       success: true,
-      data: user
-    })
+      data: {
+        ...userData,
+        profileImageUrl,
+      },
+    });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: error.message,
-    })
+    });
   }
-
-}
+};
 
 // Login user
 export const loginUser = async (req, res) => {
@@ -501,7 +593,6 @@ export const getMyReferrals = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // ---------- Validate ObjectId ----------
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         status: false,
@@ -509,9 +600,9 @@ export const getMyReferrals = async (req, res) => {
       });
     }
 
-    // ---------- Authorization (only the user themselves) ----------
-    // If you don't use auth middleware on this route yet, comment this out.
-    const requesterId = req.user?.id || req.user?.userId || req.user?._id;
+    const requesterId =
+      req.user?.id || req.user?.userId || req.user?._id;
+
     if (requesterId && requesterId.toString() !== id.toString()) {
       return res.status(403).json({
         status: false,
@@ -521,12 +612,8 @@ export const getMyReferrals = async (req, res) => {
 
     const referredById = new mongoose.Types.ObjectId(id);
 
-    // ---------- Single aggregation: filter + group + count ----------
     const [result] = await User.aggregate([
-      // 1. Match only users whose referredBy === id
       { $match: { referredBy: referredById } },
-
-      // 2. Project only the fields the UI needs
       {
         $project: {
           _id: 1,
@@ -541,11 +628,7 @@ export const getMyReferrals = async (req, res) => {
           createdAt: 1,
         },
       },
-
-      // 3. Sort newest first
       { $sort: { createdAt: -1 } },
-
-      // 4. Bucket into pending / approved / rejected arrays
       {
         $facet: {
           pending: [{ $match: { refApprove: "Waiting" } }],
@@ -561,12 +644,30 @@ export const getMyReferrals = async (req, res) => {
     const rejected = result?.rejected || [];
     const total = result?.counts?.[0]?.total || 0;
 
+    // Generate signed image URLs for every referral.
+    const addProfileImageUrls = async (users) =>
+      Promise.all(
+        users.map(async (user) => ({
+          ...user,
+          profileImageUrl: user.profileImage
+            ? await getProfileImageSignedUrl(user.profileImage)
+            : null,
+        }))
+      );
+
+    const [pendingWithImages, approvedWithImages, rejectedWithImages] =
+      await Promise.all([
+        addProfileImageUrls(pending),
+        addProfileImageUrls(approved),
+        addProfileImageUrls(rejected),
+      ]);
+
     return res.status(200).json({
       status: true,
       data: {
-        pending,
-        approved,
-        rejected,
+        pending: pendingWithImages,
+        approved: approvedWithImages,
+        rejected: rejectedWithImages,
         counts: {
           pending: pending.length,
           approved: approved.length,
@@ -578,9 +679,10 @@ export const getMyReferrals = async (req, res) => {
     });
   } catch (error) {
     console.error("getMyReferrals error:", error);
+
     return res.status(500).json({
       status: false,
-      message: error.message,
+      message: "Failed to fetch referrals",
     });
   }
 };

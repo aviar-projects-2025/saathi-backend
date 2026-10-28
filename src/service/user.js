@@ -1,9 +1,22 @@
 import User from '../model/user.js'
 
+
 export const userCreateService = async (userData) => {
-  const user = await User.create(userData);
+  const cleanUserData = { ...userData };
+
+  // Do not store a missing invitation token as null.
+  if (
+    cleanUserData.inviteToken === null ||
+    cleanUserData.inviteToken === undefined ||
+    cleanUserData.inviteToken === ""
+  ) {
+    delete cleanUserData.inviteToken;
+  }
+
+  const user = await User.create(cleanUserData);
   return user;
 };
+
 
 export const getAllUsers = async () => {
   const user = await User.find({}, { password: 0, __v: 0 });
@@ -34,7 +47,7 @@ export const updateProfileService = async (userId, data) => {
   if (!isExist) {
     throw new Error("User not found");
   }
-  
+
   // const mobile = await User.find({
   //   mobile: data.mobile
   // })

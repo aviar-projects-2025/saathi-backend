@@ -49,9 +49,8 @@ const userSchema = new mongoose.Schema({
 
     inviteToken: {
         type: String,
-        default: null,
         unique: true,
-        sparse: true, // ← critical: allows multiple users with null
+        // No default: null
     },
 
     referredBy: {

@@ -14,6 +14,7 @@ import savePost from "./src/routes/savedPost.js"
 import referralInvite from "./src/routes/referralInvite.js"
 import travelBuddy from "./src/routes/travelBuddy.js"
 import helpProposalRoutes from "./src/routes/helpProposalRoutes.js"
+import s3Routes from "./src/routes/s3Routes.js"
 
 
 
@@ -65,6 +66,7 @@ app.use("/api/v1/save-post", savePost)
 app.use("/api/v1/referralInvite", referralInvite)
 app.use("/api/v1/travel-buddy", travelBuddy)
 app.use("/api/v1/help-proposals", helpProposalRoutes);
+app.use("/api/v1/s3", s3Routes);
 
 
 

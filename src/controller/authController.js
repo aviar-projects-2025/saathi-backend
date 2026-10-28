@@ -11,6 +11,11 @@ import crypto from 'crypto';
 import twilioClient from '../../config/twilio.js';
 import Referral from '../model/referral.js';
 import ReferralInvitation from '../model/ReferralInvitation.js';
+import {
+  createRegistrationSession,
+} from "../../config/registrationSession.js";
+import registrationSession from '../model/registrationSession.js';
+
 
 const generateOTP = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -305,6 +310,219 @@ const sendOtp = async (req, res) => {
         console.error("Send OTP Error:", error);
         return res.status(500).json({ success: false, message: "Failed to send OTP" });
     }
+};
+
+
+export const verifyOtp = async (req, res) => {
+  try {
+    const { mobileNumber, otp, invitationToken } = req.body || {};
+
+    // 1. Validate input
+    if (!mobileNumber || !otp || !invitationToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Mobile number, OTP and invitation token are required",
+      });
+    }
+
+    // 2. Normalize mobile number
+    let phoneNumber = String(mobileNumber)
+      .trim()
+      .replace(/[\s()-]/g, "");
+
+    if (!phoneNumber.startsWith("+")) {
+      if (phoneNumber.length === 10) {
+        phoneNumber = `+91${phoneNumber}`;
+      } else if (
+        phoneNumber.length === 11 &&
+        phoneNumber.startsWith("1")
+      ) {
+        phoneNumber = `+${phoneNumber}`;
+      } else if (
+        phoneNumber.length === 12 &&
+        phoneNumber.startsWith("91")
+      ) {
+        phoneNumber = `+${phoneNumber}`;
+      }
+    }
+
+    if (!/^\+[1-9]\d{7,14}$/.test(phoneNumber)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid mobile number",
+      });
+    }
+
+    // 3. Validate OTP format
+    const otpValue = String(otp).trim();
+
+    if (!/^\d{6}$/.test(otpValue)) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP must be 6 digits",
+      });
+    }
+
+    // 4. Verify OTP
+    if (process.env.NODE_ENV === "development") {
+      // Development-only test OTP
+      if (otpValue !== "123456") {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid OTP",
+        });
+      }
+    } else if (process.env.NODE_ENV === "production") {
+      // Keep your current production policy: US numbers only.
+      if (!phoneNumber.startsWith("+1")) {
+        return res.status(400).json({
+          success: false,
+          message: "Only US mobile numbers are allowed",
+        });
+      }
+
+      const verificationCheck =
+        await twilioClient.verify.v2
+          .services(process.env.TWILIO_VERIFY_SID)
+          .verificationChecks.create({
+            to: phoneNumber,
+            code: otpValue,
+          });
+
+      if (verificationCheck.status !== "approved") {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid or expired OTP",
+        });
+      }
+    } else {
+      return res.status(500).json({
+        success: false,
+        message: "Invalid NODE_ENV configuration",
+      });
+    }
+
+    // 5. Prevent registration if the mobile is already registered.
+    const existingUser = await User.findOne({
+      mobile: phoneNumber,
+    }).select("_id");
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        status: "ALREADY_REGISTERED",
+        message: "An account already exists with this mobile number. Please log in.",
+      });
+    }
+
+    // 6. Resolve the invitation on the backend.
+    let referrerId = null;
+
+    // A. Permanent invite link
+    const invitedUser = await User.findOne({
+      inviteToken: invitationToken,
+    }).select("_id");
+
+    if (invitedUser) {
+      referrerId = invitedUser._id;
+    } else {
+      // B. SMS invitation token
+      const tokenHash = crypto
+        .createHash("sha256")
+        .update(invitationToken)
+        .digest("hex");
+
+      const smsInvite = await ReferralInvitation.findOne({
+        tokenHash,
+        status: "PENDING",
+        expiresAt: { $gt: new Date() },
+      }).select("referrerId");
+
+      if (smsInvite) {
+        referrerId = smsInvite.referrerId;
+      }
+    }
+
+    // C. Existing referral-by-mobile fallback.
+    // Only use it if its referrer is present and valid.
+    const referral = await Referral.findOne({
+      mobile: phoneNumber,
+    });
+
+    if (!referrerId && referral) {
+      referrerId = referral.referredBy;
+    }
+
+    if (!referrerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Your invitation is invalid or expired. Please use a valid invite link.",
+      });
+    }
+
+    // Prevent an invitation from overriding a different existing referrer.
+    if (
+      referral &&
+      referral.referredBy.toString() !== referrerId.toString()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "This mobile number is associated with a different referrer.",
+      });
+    }
+
+    // Confirm the referrer still exists.
+    const referrerExists = await User.exists({
+      _id: referrerId,
+    });
+
+    if (!referrerExists) {
+      return res.status(400).json({
+        success: false,
+        message: "The referring account could not be found.",
+      });
+    }
+
+    // 7. Update referral status.
+    if (referral) {
+      referral.status = "Verified";
+      await referral.save();
+    } else {
+      await Referral.create({
+        referredBy: referrerId,
+        mobile: phoneNumber,
+        status: "Verified",
+      });
+    }
+
+    // 8. Invalidate older incomplete registration sessions.
+    await registrationSession.deleteMany({
+      mobile: phoneNumber,
+      completedAt: null,
+    });
+
+    // 9. Create a registration-only credential.
+    // This is NOT a normal application/login JWT.
+    const { credential } = await createRegistrationSession({
+      mobile: phoneNumber,
+      referredBy: referrerId,
+    });
+
+    // 10. Return credential to frontend.
+    return res.status(200).json({
+      success: true,
+      message: "OTP verified successfully",
+      registrationCredential: credential,
+      expiresIn: 900,
+    });
+  } catch (error) {
+    console.error("Verify OTP Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to verify OTP. Please try again.",
+    });
+  }
 };
 
 const login = async (req, res) => {
@@ -878,176 +1096,7 @@ const verifyOTP = async (req, res) => {
     }
 };
 
-export const verifyOtp = async (req, res) => {
-    try {
-        const { mobileNumber, otp } = req.body;
 
-        if (!mobileNumber || !otp) {
-            return res.status(400).json({
-                success: false,
-                message: "Mobile number and OTP are required",
-            });
-        }
-
-        // =====================================================
-        // NORMALIZE PHONE NUMBER
-        // =====================================================
-
-        let phoneNumber = mobileNumber
-            .toString()
-            .trim()
-            .replace(/[\s()-]/g, "");
-
-        if (!phoneNumber.startsWith("+")) {
-            // 10 digit number
-            if (phoneNumber.length === 10) {
-                phoneNumber = `+91${phoneNumber}`;
-            }
-
-            // 1XXXXXXXXXX
-            else if (
-                phoneNumber.length === 11 &&
-                phoneNumber.startsWith("1")
-            ) {
-                phoneNumber = `+${phoneNumber}`;
-            }
-
-            // 91XXXXXXXXXX
-            else if (
-                phoneNumber.length === 12 &&
-                phoneNumber.startsWith("91")
-            ) {
-                phoneNumber = `+${phoneNumber}`;
-            }
-        }
-
-        // =====================================================
-        // BASIC PHONE VALIDATION
-        // =====================================================
-
-        if (!/^\+[1-9]\d{7,14}$/.test(phoneNumber)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid mobile number",
-            });
-        }
-
-        // =====================================================
-        // OTP VALIDATION
-        // =====================================================
-
-        if (!/^\d{6}$/.test(otp.toString())) {
-            return res.status(400).json({
-                success: false,
-                message: "OTP must be 6 digits",
-            });
-        }
-
-        // =====================================================
-        // VERIFY OTP
-        // =====================================================
-
-        let otpVerified = false;
-
-        // =====================================================
-        // DEVELOPMENT
-        // =====================================================
-
-        if (process.env.NODE_ENV === "development") {
-            console.log("Development OTP verification");
-            console.log("Mobile:", phoneNumber);
-            console.log("OTP:", otp);
-
-            // Dummy OTP for development
-            if (otp.toString() !== "123456") {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid OTP",
-                });
-            }
-
-            otpVerified = true;
-        }
-
-        // =====================================================
-        // PRODUCTION
-        // =====================================================
-
-        else if (process.env.NODE_ENV === "production") {
-            // Production should only allow US numbers
-            if (!phoneNumber.startsWith("+1")) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Only US mobile numbers are allowed",
-                });
-            }
-
-            const verificationCheck =
-                await twilioClient.verify.v2
-                    .services(process.env.TWILIO_VERIFY_SID)
-                    .verificationChecks.create({
-                        to: phoneNumber,
-                        code: otp.toString(),
-                    });
-
-            if (verificationCheck.status !== "approved") {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid or expired OTP",
-                });
-            }
-
-            otpVerified = true;
-        }
-
-        // =====================================================
-        // INVALID ENVIRONMENT
-        // =====================================================
-
-        else {
-            return res.status(500).json({
-                success: false,
-                message: "Invalid NODE_ENV configuration",
-            });
-        }
-
-        // =====================================================
-        // OTP VERIFIED
-        // UPDATE REFERRAL STATUS
-        // =====================================================
-
-        if (otpVerified) {
-            const referral = await Referral.findOne({
-                mobile: phoneNumber,
-            });
-
-            if (referral) {
-                referral.status = "Verified";
-                await referral.save();
-                console.log(
-                    `Referral verified for mobile: ${phoneNumber}`
-                );
-            } else {
-                console.log(
-                    `No referral found for mobile: ${phoneNumber}`
-                );
-            }
-
-            return res.status(200).json({
-                success: true,
-                message: "OTP verified successfully",
-            });
-        }
-
-    } catch (error) {
-        console.error("Verify OTP Error:", error);
-
-        return res.status(400).json({
-            success: false,
-            message: "Invalid or expired OTP",
-        });
-    }
-};
 
 const resetPassword = async (req, res) => {
     try {
