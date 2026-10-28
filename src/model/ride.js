@@ -75,7 +75,7 @@ const rideSchema = new mongoose.Schema(
         if (this.kind === "request") return undefined;
         return this.modeOfTravel === "Flight" ? 1 : undefined;
       },
-      min: 1,
+      min: 0,
       max: 7,
     },
 

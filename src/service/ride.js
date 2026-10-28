@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import BookRide from "../model/bookride.js";
 import Ride from "../model/ride.js";
 import User from "../model/user.js";
+import { getProfileImageSignedUrl } from "../controller/s3Controller.js";
 
 export const createRideService = async (data) => {
   const startDate = new Date(data.startTime);
@@ -14,6 +15,7 @@ export const createRideService = async (data) => {
   return await Ride.create(data);
 };
 
+
 const fetchMyRideCategory = async ({
   query,
   pageNumber,
@@ -21,27 +23,34 @@ const fetchMyRideCategory = async ({
   skip,
   sort,
 }) => {
-
   const totalRides = await Ride.countDocuments(query);
 
   const rides = await Ride.find(query)
     .populate(
       "createdBy",
-      "firstName lastName profileImage zipcode"
+      "firstName lastName profileImage zipcode language"
     )
-    .populate("actualDriver", "firstName lastName profileImage zipcode")
+    .populate(
+      "actualDriver",
+      "firstName lastName profileImage zipcode language"
+    )
     .sort(sort)
     .skip(skip)
-    .limit(limitNumber);
+    .limit(limitNumber)
+    .lean();
+
+  const ridesWithImageUrls =
+    await addRideProfileImageUrlsToList(rides);
 
   return {
-    rides,
+    rides: ridesWithImageUrls,
     totalRides,
     page: pageNumber,
     limit: limitNumber,
     hasMore: skip + rides.length < totalRides,
   };
 };
+
 
 const getMyRidesCategory = async ({
   category,
@@ -522,25 +531,34 @@ export const getAllRideService = async ({
   // FETCH
   // =====================================================
 
+
   const rides = await Ride.find(query)
     .populate(
       "createdBy",
+      "firstName lastName profileImage zipcode language"
+    )
+    .populate(
+      "actualDriver",
       "firstName lastName profileImage zipcode language"
     )
     .sort({
       startTime: 1,
     })
     .skip(skip)
-    .limit(limitNumber);
+    .limit(limitNumber)
+    .lean();
+
+  const ridesWithImageUrls =
+    await addRideProfileImageUrlsToList(rides);
 
   return {
-    rides,
+    rides: ridesWithImageUrls,
     totalRides,
     page: pageNumber,
     limit: limitNumber,
-    hasMore:
-      skip + rides.length < totalRides,
+    hasMore: skip + rides.length < totalRides,
   };
+
 };
 
 
@@ -655,7 +673,17 @@ export const getMyRideCountsService = async ({ userId }) => {
 
 // Get single Ride
 export const getRideById = async (id) => {
-  return await Ride.findById(id);
+  const ride = await Ride.findById(id)
+    .populate(
+      "createdBy",
+      "firstName lastName profileImage zipcode language"
+    )
+    .populate(
+      "actualDriver",
+      "firstName lastName profileImage zipcode language"
+    );
+
+  return addRideProfileImageUrls(ride);
 };
 
 export const deleteRideService = async (id) => {
@@ -686,3 +714,62 @@ export const updateRideService = async (id, data) => {
 
   return updatedRide;
 };
+
+
+
+const addProfileImageUrl = async (user) => {
+  if (!user || typeof user !== "object") {
+    return user;
+  }
+
+  const userData =
+    typeof user.toObject === "function"
+      ? user.toObject()
+      : { ...user };
+
+  if (!userData.profileImage) {
+    return {
+      ...userData,
+      profileImageUrl: null,
+    };
+  }
+
+  try {
+    return {
+      ...userData,
+      profileImageUrl: await getProfileImageSignedUrl(
+        userData.profileImage
+      ),
+    };
+  } catch (error) {
+    console.error("Failed to sign profile image URL:", error.message);
+
+    return {
+      ...userData,
+      profileImageUrl: null,
+    };
+  }
+};
+
+const addRideProfileImageUrls = async (ride) => {
+  if (!ride) return ride;
+
+  const rideData =
+    typeof ride.toObject === "function"
+      ? ride.toObject()
+      : { ...ride };
+
+  const [createdBy, actualDriver] = await Promise.all([
+    addProfileImageUrl(rideData.createdBy),
+    addProfileImageUrl(rideData.actualDriver),
+  ]);
+
+  return {
+    ...rideData,
+    createdBy,
+    actualDriver,
+  };
+};
+
+const addRideProfileImageUrlsToList = async (rides) =>
+  Promise.all(rides.map(addRideProfileImageUrls));
