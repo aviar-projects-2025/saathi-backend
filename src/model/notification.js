@@ -7,6 +7,11 @@ const notificationSchema = new mongoose.Schema({
   message: { type: String, required: true, trim: true },
   data: { type: mongoose.Schema.Types.Mixed, default: {} },
   isRead: { type: Boolean, default: false, index: true },
+  actorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
 }, { timestamps: true });
 
 notificationSchema.index({ userId: 1, createdAt: -1 });

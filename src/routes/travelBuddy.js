@@ -1,19 +1,34 @@
 import express from "express";
-import { createTrip, getMyTrips, getMatches, getAllTrips } from "../controller/travelBuddy.js";
+import {
+  createTrip,
+  getMyTrips,
+  getAllTrips,
+  getTripById,
+  getMatches,
+  createTravelBuddyRequest,
+  getReceivedTravelBuddyRequests,
+  getSentTravelBuddyRequests,
+  respondToTravelBuddyRequest,
+  getTravelBuddyRequestContact,
+  getAcceptedTripDetails,
+} from "../controller/travelBuddy.js";
 import { verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
+router.use(verifyToken);
 
-router.use(verifyToken); // All travel buddy routes require auth
+// Keep specific request paths before /:id paths.
+router.post("/requests", createTravelBuddyRequest);
+router.get("/requests/received", getReceivedTravelBuddyRequests);
+router.get("/requests/sent", getSentTravelBuddyRequests);
+router.patch("/requests/:id/respond", respondToTravelBuddyRequest);
+router.get("/requests/:id/contact", getTravelBuddyRequestContact);
+router.get("/accepted/:tripId", verifyToken, getAcceptedTripDetails);
 
-router.post("/", verifyToken, createTrip);
-router.get("/my-trips", verifyToken, getMyTrips);
-router.get("/",verifyToken, getAllTrips); // <--- Add this BEFORE /:id
-
-// Dynamic routes
-// router.get("/:id", getTripById); 
-// router.post("/:id/accept", acceptMatch);
-// router.post("/:id/complete", completeTrip);
-router.get("/:id/matches", verifyToken, getMatches);
+router.post("/", createTrip);
+router.get("/my-trips", getMyTrips);
+router.get("/", getAllTrips);
+router.get("/:id", getTripById);
+router.get("/:id/matches", getMatches);
 
 export default router;
