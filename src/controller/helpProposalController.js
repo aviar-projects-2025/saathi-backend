@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import HelpProposal from "../model/helpproposal.js";
+import HelpProposal from "../model/helpProposal.js";
 import Ride from "../model/ride.js";
 
 const log = (...args) => console.log("[I_CAN_HELP][API]", ...args);
