@@ -29,7 +29,8 @@
 
 import "dotenv/config";  
 
-import './src/crons/rideStatus.job.js'       
+import './src/crons/rideStatus.job.js'    
+import { startAutoRateJob } from "./src/crons/autoRateCompletedRides.job.js";   
 
 import { Server } from "socket.io";
 import http from "http";
@@ -38,6 +39,7 @@ import { initSocket } from "./socket.js";
 const { default: DBConnection } = await import("./config/db.js");
 const { default: app } = await import("./app.js");
 
+startAutoRateJob();
 DBConnection();
 const server = http.createServer(app);
 initSocket(server);

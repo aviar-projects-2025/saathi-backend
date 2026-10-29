@@ -1,10 +1,8 @@
 import User from '../model/user.js'
 
-
 export const userCreateService = async (userData) => {
   const cleanUserData = { ...userData };
 
-  // Do not store a missing invitation token as null.
   if (
     cleanUserData.inviteToken === null ||
     cleanUserData.inviteToken === undefined ||
@@ -17,51 +15,40 @@ export const userCreateService = async (userData) => {
   return user;
 };
 
-
 export const getAllUsers = async () => {
   const user = await User.find({}, { password: 0, __v: 0 });
-  return user
-}
+  return user;
+};
 
+// ★ FIXED: Populate referredBy so the inviter name shows up
 export const getUserById = async (id) => {
-  const user = await User.findById(id);
-  return user
-}
+  const user = await User.findById(id)
+    .populate("referredBy", "firstName lastName profileImage city language");
+  return user;
+};
 
 export const loggedinUser = async (email) => {
-
-
-  return user;
-}
+  return null; // (placeholder — no implementation in original)
+};
 
 export const getTopRidersService = async (limit) => {
   return await User.find({ completedRideCount: { $gt: 0 } })
     .sort({ completedRideCount: -1 })
     .limit(limit)
-    .select("firstName lastName city completedRideCount  profileImage isVerified");
+    .select("firstName lastName city completedRideCount profileImage isVerified");
 };
 
 export const updateProfileService = async (userId, data) => {
-
   const isExist = await User.findById(userId);
   if (!isExist) {
     throw new Error("User not found");
   }
 
-  // const mobile = await User.find({
-  //   mobile: data.mobile
-  // })
-
-  // if (mobile.length !== 0) {
-  //   throw new Error('Mobile no already exist!')
-  // }
-
   const updatedUser = await User.findByIdAndUpdate(
     userId,
     data,
     { new: true }
-  )
-
+  );
 
   return updatedUser;
-}
+};

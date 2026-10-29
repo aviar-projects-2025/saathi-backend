@@ -15,8 +15,8 @@ import referralInvite from "./src/routes/referralInvite.js"
 import travelBuddy from "./src/routes/travelBuddy.js"
 import helpProposalRoutes from "./src/routes/helpProposalRoutes.js"
 import s3Routes from "./src/routes/s3Routes.js"
-
-
+import reviewRoutes from "./src/routes/reviewRouter.js"
+import reportRoutes from "./src/routes/reportRouter.js"
 
 
 
@@ -67,6 +67,8 @@ app.use("/api/v1/referralInvite", referralInvite)
 app.use("/api/v1/travel-buddy", travelBuddy)
 app.use("/api/v1/help-proposals", helpProposalRoutes);
 app.use("/api/v1/s3", s3Routes);
+app.use("/api/v1/reviews", reviewRoutes);
+app.use("/api/v1/reports", reportRoutes);
 
 
 

@@ -13,7 +13,7 @@ const memberSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
- 
+
   },
   { _id: false }
 );
@@ -40,9 +40,9 @@ const bookRideSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-     phone: {
-        type: String,
-        required: true,
+    phone: {
+      type: String,
+      required: true,
     },
     seatsRequested: {
       type: Number,
@@ -70,7 +70,7 @@ const bookRideSchema = new mongoose.Schema(
       // required: true,
       min: 1,
     },
-  
+
     membersCount: {
       type: Number,
       required: true,
@@ -97,7 +97,11 @@ const bookRideSchema = new mongoose.Schema(
       enum: ["SEAT", "COMPANION"],
       required: true,
     },
-
+    hasRated: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     status: {
       type: String,
       enum: [

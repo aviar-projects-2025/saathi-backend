@@ -247,14 +247,14 @@ export const getSingleUser = async (req, res) => {
       });
     }
 
-    // Support both Mongoose documents and plain objects
+    // Convert to plain object
     const userData =
       typeof user.toObject === "function"
         ? user.toObject()
         : { ...user };
 
+    // 1. Sign the user's own profile image
     let profileImageUrl = null;
-
     if (userData.profileImage) {
       try {
         profileImageUrl = await getProfileImageSignedUrl(
@@ -265,14 +265,51 @@ export const getSingleUser = async (req, res) => {
       }
     }
 
+    // 2. Sign the referrer's profile image (referredBy is now populated)
+    let referredByData = userData.referredBy;
+    if (
+      referredByData &&
+      typeof referredByData === "object" &&
+      referredByData.profileImage
+    ) {
+      let referredByImageUrl = null;
+      try {
+        referredByImageUrl = await getProfileImageSignedUrl(
+          referredByData.profileImage
+        );
+      } catch (error) {
+        console.error("Failed to generate referrer image URL:", error);
+      }
+      referredByData = {
+        ...referredByData,
+        profileImageUrl: referredByImageUrl,
+      };
+    }
+
+    // 3. ★ Ensure createdAt exists — fall back to ObjectId timestamp
+    let createdAt = userData.createdAt || userData.created_at || userData.joinedAt;
+    if (!createdAt && userData._id) {
+      try {
+        const ts = parseInt(String(userData._id).substring(0, 8), 16) * 1000;
+        if (!isNaN(ts)) {
+          createdAt = new Date(ts).toISOString();
+        }
+      } catch (e) {
+        console.warn("Could not derive createdAt from ObjectId:", e.message);
+      }
+    }
+
     return res.status(200).json({
       success: true,
       data: {
         ...userData,
+        createdAt,          // ★ always present
         profileImageUrl,
+        referredBy: referredByData,
       },
     });
   } catch (error) {
+    console.error("getSingleUser error:", error);
     return res.status(500).json({
       success: false,
       message: error.message,
