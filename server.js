@@ -27,13 +27,12 @@
 
 
 
-import dotenv from "dotenv";
-import './src/crons/rideStatus.job.js'
-dotenv.config({ path: ".env", override: true });
+import "dotenv/config";  
+
+import './src/crons/rideStatus.job.js'       
 
 import { Server } from "socket.io";
 import http from "http";
-
 import { initSocket } from "./socket.js";
 
 const { default: DBConnection } = await import("./config/db.js");
@@ -46,4 +45,3 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port: ${PORT}`);
 });
-

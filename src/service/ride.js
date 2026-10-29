@@ -300,7 +300,7 @@ export const getAllRideService = async ({
   // -----------------------------------------------------
 
   conditions.push({
-    status: "OPEN",
+    status: { $in: ["OPEN", "FULL"] },
   });
 
   // -----------------------------------------------------
