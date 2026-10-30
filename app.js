@@ -17,7 +17,8 @@ import helpProposalRoutes from "./src/routes/helpProposalRoutes.js"
 import s3Routes from "./src/routes/s3Routes.js"
 import reviewRoutes from "./src/routes/reviewRouter.js"
 import reportRoutes from "./src/routes/reportRouter.js"
-
+import chatRoutes from './src/chat/chat.routes.js'
+import blockRoutes from "./src/chat/block.routes.js";
 
 
 const app = express();
@@ -69,7 +70,8 @@ app.use("/api/v1/help-proposals", helpProposalRoutes);
 app.use("/api/v1/s3", s3Routes);
 app.use("/api/v1/reviews", reviewRoutes);
 app.use("/api/v1/reports", reportRoutes);
-
+app.use("/api/v1/chat", chatRoutes)
+app.use("/api/v1/blocks", blockRoutes);
 
 
 
