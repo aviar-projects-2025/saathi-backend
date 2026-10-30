@@ -52,7 +52,7 @@ export async function createHelpProposal(req, res) {
   const traceId = new mongoose.Types.ObjectId().toString();
   const helperId = currentUserId(req);
   const { requestRideId, offerDetails } = req.body || {};
-  log("create:start", { traceId, helperId: String(helperId || ""), requestRideId });
+  // log("create:start", { traceId, helperId: String(helperId || ""), requestRideId });
 
   try {
     if (!helperId) return sendError(res, 401, "Authentication is required.", "UNAUTHENTICATED");
@@ -89,7 +89,7 @@ export async function createHelpProposal(req, res) {
     const result = await HelpProposal.findById(proposal._id)
       .populate("helperId", "firstName lastName profileImage zipcode")
       .populate("requestRideId");
-    log("create:success", { traceId, proposalId: String(proposal._id), requestRideId: String(requestRide._id), helperId: String(helperId) });
+    // log("create:success", { traceId, proposalId: String(proposal._id), requestRideId: String(requestRide._id), helperId: String(helperId) });
     return res.status(201).json({ success: true, message: "Your offer to help was sent.", data: result });
   } catch (error) {
     errLog("create:failed", { traceId, message: error?.message, stack: error?.stack });
@@ -99,8 +99,8 @@ export async function createHelpProposal(req, res) {
 
 export async function getReceivedHelpProposals(req, res) {
   const requesterId = currentUserId(req);
-  console.log(requesterId,'requesterId')
-  log("received:start", { requesterId: String(requesterId || "") });
+  // console.log(requesterId,'requesterId')
+  // log("received:start", { requesterId: String(requesterId || "") });
   try {
     if (!requesterId) return sendError(res, 401, "Authentication is required.", "UNAUTHENTICATED");
     const proposals = await HelpProposal.find({ requesterId })
@@ -108,7 +108,7 @@ export async function getReceivedHelpProposals(req, res) {
       .populate("requestRideId")
       .sort({ createdAt: -1 })
       .lean();
-    log("received:success", { requesterId: String(requesterId), count: proposals.length, pending: proposals.filter(p => p.status === "PENDING").length });
+    // log("received:success", { requesterId: String(requesterId), count: proposals.length, pending: proposals.filter(p => p.status === "PENDING").length });
     return res.status(200).json({ success: true, data: proposals, count: proposals.length });
   } catch (error) {
     errLog("received:failed", { requesterId: String(requesterId || ""), message: error?.message, stack: error?.stack });
@@ -140,7 +140,7 @@ export async function respondToHelpProposal(req, res) {
         { new: true }
       );
       if (!updated) return sendError(res, 409, "This proposal was already processed.", "PROPOSAL_RACE");
-      log("respond:rejected", { traceId, proposalId: String(proposal._id), requestRideId: String(proposal.requestRideId) });
+      // log("respond:rejected", { traceId, proposalId: String(proposal._id), requestRideId: String(proposal.requestRideId) });
       return res.status(200).json({ success: true, message: "Offer rejected. Your ride request remains open.", data: updated });
     }
 
@@ -195,14 +195,14 @@ export async function respondToHelpProposal(req, res) {
       { $set: { status: "REJECTED", respondedAt: new Date() } }
     );
 
-    log("respond:accepted", {
-      traceId,
-      proposalId: String(proposal._id),
-      finalRideId: String(finalRide._id),
-      passengerId: String(requestRide.createdBy),
-      actualDriverId: String(proposal.helperId),
-      otherProposalsRejected: otherResult.modifiedCount,
-    });
+    // log("respond:accepted", {
+    //   traceId,
+    //   proposalId: String(proposal._id),
+    //   finalRideId: String(finalRide._id),
+    //   passengerId: String(requestRide.createdBy),
+    //   actualDriverId: String(proposal.helperId),
+    //   otherProposalsRejected: otherResult.modifiedCount,
+    // });
     return res.status(200).json({
       success: true,
       message: "Offer accepted. The confirmed ride has been created.",
@@ -221,7 +221,7 @@ export async function updateHelpRideStatus(req, res) {
   const helperId = currentUserId(req);
   const { rideId } = req.params;
   const nextStatus = req.body?.travelStatus;
-  log("ride-status:start", { rideId, helperId: String(helperId || ""), nextStatus });
+  // log("ride-status:start", { rideId, helperId: String(helperId || ""), nextStatus });
   try {
     if (!helperId) return sendError(res, 401, "Authentication is required.", "UNAUTHENTICATED");
     if (!mongoose.isValidObjectId(rideId)) return sendError(res, 400, "Invalid ride ID.", "INVALID_RIDE_ID");
@@ -244,10 +244,30 @@ export async function updateHelpRideStatus(req, res) {
     ).populate("createdBy", "firstName lastName profileImage zipcode")
      .populate("actualDriver", "firstName lastName profileImage zipcode");
     if (!updatedRide) return sendError(res, 409, "Ride status changed concurrently. Refresh and try again.", "STATUS_RACE");
-    log("ride-status:success", { rideId: String(updatedRide._id), nextStatus, helperId: String(helperId) });
+    // log("ride-status:success", { rideId: String(updatedRide._id), nextStatus, helperId: String(helperId) });
     return res.status(200).json({ success: true, message: `Ride ${nextStatus.toLowerCase()} successfully.`, data: updatedRide });
   } catch (error) {
     errLog("ride-status:failed", { rideId, message: error?.message, stack: error?.stack });
     return sendError(res, 500, "Unable to update accepted help ride status.", "RIDE_STATUS_FAILED");
+  }
+}
+
+export async function getSentHelpProposals(req, res) {
+  const helperId = currentUserId(req);
+  // log("sent:start", { helperId: String(helperId || "") });
+  try {
+    if (!helperId) return sendError(res, 401, "Authentication is required.", "UNAUTHENTICATED");
+
+    const proposals = await HelpProposal.find({ helperId })
+      .populate("requestRideId")
+      .populate("requesterId", "firstName lastName profileImage")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // log("sent:success", { helperId: String(helperId), count: proposals.length });
+    return res.status(200).json({ success: true, data: proposals });
+  } catch (error) {
+    errLog("sent:failed", { helperId: String(helperId || ""), message: error?.message, stack: error?.stack });
+    return sendError(res, 500, "Unable to fetch sent proposals.", "FETCH_FAILED");
   }
 }

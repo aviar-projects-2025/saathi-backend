@@ -2,11 +2,39 @@ import TravelBuddy from "../model/travelBuddy.js";
 import User from "../model/user.js";
 import mongoose from "mongoose";
 import TravelBuddyRequest from "../model/travelBuddyRequest.js";
-import {
-  createNotificationService,
-} from "../service/notification.js";
+import { createNotificationService } from "../service/notification.js";
 import { emitNotification } from "../../socket.js";
 
+const getUserId = (req) =>
+  req.user?._id || req.user?.id || req.user?.userId || req.userId;
+
+/* ───────────────────────────────────────────────────────
+   Helper: auto-complete trips whose last arrival has passed
+   ─────────────────────────────────────────────────────── */
+const autoCompleteExpiredTrips = async (userId) => {
+  const now = new Date();
+  const candidates = await TravelBuddy.find({
+    status: { $in: ["OPEN", "MATCHED"] },
+    createdBy: userId,
+  }).select("_id flights");
+  const expiredIds = candidates
+    .filter((t) => {
+      const last = t.flights?.[t.flights.length - 1];
+      if (!last?.arrivalTime) return false;
+      return new Date(last.arrivalTime) < now;
+    })
+    .map((t) => t._id);
+  if (expiredIds.length) {
+    await TravelBuddy.updateMany(
+      { _id: { $in: expiredIds } },
+      { $set: { status: "COMPLETED" } }
+    );
+  }
+};
+
+/* ───────────────────────────────────────────────────────
+   Create
+   ─────────────────────────────────────────────────────── */
 export const createTrip = async (req, res) => {
   try {
     const userId = getUserId(req);
@@ -34,75 +62,60 @@ export const createTrip = async (req, res) => {
   }
 };
 
+/* ───────────────────────────────────────────────────────
+   My Trips — ★ includes matched trips via accepted requests
+   ─────────────────────────────────────────────────────── */
 export const getMyTrips = async (req, res) => {
   try {
-    const userId = req.user?.id || req.user?.userId || req.user?._id;
-    const trips = await TravelBuddy.find({ createdBy: userId }).sort({ createdAt: -1 });
-    res.status(200).json({ success: true, data: trips });
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ success: false, message: "Authentication required." });
+
+    await autoCompleteExpiredTrips(userId);
+
+    // ★ Only return trips created by this user. 
+    // The other person's trip details are fetched via the /accepted/:id endpoint.
+    const trips = await TravelBuddy.find({ createdBy: userId })
+      .populate("createdBy", "firstName lastName profileImage")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({ success: true, data: trips });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("getMyTrips Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-const normalizeFlightValue = (value) =>
-  String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+/* ───────────────────────────────────────────────────────
+   Flight helpers
+   ─────────────────────────────────────────────────────── */
+const normalizeFlightValue = (v) => String(v || "").trim().toUpperCase().replace(/\s+/g, "");
+const getFinalFlight = (trip) =>
+  Array.isArray(trip?.flights) && trip.flights.length ? trip.flights[trip.flights.length - 1] : null;
 
-const getFinalFlight = (trip) => {
-  if (!Array.isArray(trip?.flights) || trip.flights.length === 0) {
-    return null;
-  }
-
-  return trip.flights[trip.flights.length - 1];
+const isSameDepartureDate = (a, b) => {
+  if (!a?.departureTime || !b?.departureTime) return false;
+  const d1 = new Date(a.departureTime);
+  const d2 = new Date(b.departureTime);
+  if (isNaN(d1) || isNaN(d2)) return false;
+  return d1.toISOString().slice(0, 10) === d2.toISOString().slice(0, 10);
 };
 
-const isSameDepartureDate = (first, second) => {
-  if (!first?.departureTime || !second?.departureTime) {
-    return false;
-  }
-
-  const firstDate = new Date(first.departureTime);
-  const secondDate = new Date(second.departureTime);
-
-  if (
-    Number.isNaN(firstDate.getTime()) ||
-    Number.isNaN(secondDate.getTime())
-  ) {
-    return false;
-  }
-
-  // Temporary UTC-date comparison.
-  // See the local-date note below.
-  return firstDate.toISOString().slice(0, 10) ===
-    secondDate.toISOString().slice(0, 10);
-};
-
-const getSharedFlight = (firstTrip, secondTrip) => {
-  for (const firstFlight of firstTrip.flights || []) {
-    for (const secondFlight of secondTrip.flights || []) {
-      const sameAirline =
-        normalizeFlightValue(firstFlight.airline) ===
-        normalizeFlightValue(secondFlight.airline);
-
-      const sameNumber =
-        normalizeFlightValue(firstFlight.flightNumber) ===
-        normalizeFlightValue(secondFlight.flightNumber);
-
+const getSharedFlight = (a, b) => {
+  for (const f1 of a.flights || []) {
+    for (const f2 of b.flights || []) {
       if (
-        sameAirline &&
-        sameNumber &&
-        isSameDepartureDate(firstFlight, secondFlight)
-      ) {
-        return firstFlight;
-      }
+        normalizeFlightValue(f1.airline) === normalizeFlightValue(f2.airline) &&
+        normalizeFlightValue(f1.flightNumber) === normalizeFlightValue(f2.flightNumber) &&
+        isSameDepartureDate(f1, f2)
+      ) return f1;
     }
   }
-
   return null;
 };
 
-const getPrivateSubmittedTripIds = async () => {
-  // Covers both the explicit trip flag and older submissions created before that flag existed.
-  return TravelBuddyRequest.distinct("submittedTripId", {
+const getPrivateSubmittedTripIds = async () =>
+  TravelBuddyRequest.distinct("submittedTripId", {
     $or: [
       { status: "PENDING" },
       { status: "ACCEPTED" },
@@ -110,198 +123,101 @@ const getPrivateSubmittedTripIds = async () => {
       { status: "CANCELLED", publishOnReject: { $ne: true } },
     ],
   });
-};
 
+/* ───────────────────────────────────────────────────────
+   Matches
+   ─────────────────────────────────────────────────────── */
 export const getMatches = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user?.id || req.user?.userId || req.user?._id;
+    const userId = getUserId(req);
+    if (!mongoose.isValidObjectId(id)) return res.status(400).json({ success: false, message: "Invalid trip ID" });
+    if (!userId || !mongoose.isValidObjectId(userId)) return res.status(401).json({ success: false, message: "Authentication required" });
 
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid trip ID",
-      });
-    }
+    const trip = await TravelBuddy.findOne({ _id: id, createdBy: userId }).lean();
+    if (!trip) return res.status(404).json({ success: false, message: "Trip not found" });
+    if (trip.status !== "OPEN") return res.status(400).json({ success: false, message: "Matching is available only for open trips" });
+    if (!Array.isArray(trip.flights) || trip.flights.length === 0) return res.status(400).json({ success: false, message: "This trip has no flight segments" });
 
-    if (!userId || !mongoose.isValidObjectId(userId)) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required",
-      });
-    }
-
-    // Only the trip owner can view its matches.
-    const trip = await TravelBuddy.findOne({
-      _id: id,
-      createdBy: userId,
-    }).lean();
-
-    if (!trip) {
-      return res.status(404).json({
-        success: false,
-        message: "Trip not found",
-      });
-    }
-
-    if (trip.status !== "OPEN") {
-      return res.status(400).json({
-        success: false,
-        message: "Matching is available only for open trips",
-      });
-    }
-
-    if (!Array.isArray(trip.flights) || trip.flights.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "This trip has no flight segments",
-      });
-    }
-
-    const oppositeRole =
-      trip.role === "parent" ? "companion" : "parent";
-
-    // Fetch only open trips from other members with the opposite role.
+    const oppositeRole = trip.role === "parent" ? "companion" : "parent";
     const privateSubmittedTripIds = await getPrivateSubmittedTripIds();
-    if (trip.isRequestSubmission || privateSubmittedTripIds.some((tripId) => String(tripId) === String(trip._id))) {
-      return res.status(403).json({
-        success: false,
-        message: "This submitted offer is private until it is published or approved.",
-      });
+
+    if (trip.isRequestSubmission || privateSubmittedTripIds.some((t) => String(t) === String(trip._id))) {
+      return res.status(403).json({ success: false, message: "This submitted offer is private until it is published or approved." });
     }
+
     const candidates = await TravelBuddy.find({
       _id: { $ne: trip._id, $nin: privateSubmittedTripIds },
       createdBy: { $ne: userId },
       role: oppositeRole,
       status: "OPEN",
       isRequestSubmission: { $ne: true },
-    })
-      .select("role flights languages help createdAt")
-      .lean();
+    }).select("role flights languages help createdAt").lean();
 
-    const tier1 = [];
-    const tier2 = [];
-    const tier1TripIds = new Set();
-
+    const tier1 = [], tier2 = [];
     const formatMatch = (candidate, tier, sharedFlight = null) => {
-      const finalFlight = getFinalFlight(candidate);
-
+      const last = getFinalFlight(candidate);
       return {
         id: String(candidate._id),
         tripId: String(candidate._id),
         role: candidate.role,
         tier,
-        tierLabel:
-          tier === 1
-            ? "Tier 1: Same flight"
-            : "Tier 2: Same arrival airport",
-        route: finalFlight
-          ? `${candidate.flights[0].fromCode} → ${finalFlight.toCode}`
-          : "",
+        tierLabel: tier === 1 ? "Tier 1: Same flight" : "Tier 2: Same arrival airport",
+        route: last ? `${candidate.flights[0].fromCode} → ${last.toCode}` : "",
         flightNumber: sharedFlight?.flightNumber || null,
-        arrivalAirport: finalFlight?.toCode || null,
-        arrivalTime: finalFlight?.arrivalTime || null,
+        arrivalAirport: last?.toCode || null,
+        arrivalTime: last?.arrivalTime || null,
         languages: candidate.languages || [],
         help: candidate.help || [],
-        note:
-          tier === 1
-            ? "This member shares a flight with your trip."
-            : "This member may be able to meet at the arrival airport.",
-        // Do not expose traveller names, age band, or contact details
-        // in pre-approval match results.
+        note: tier === 1 ? "This member shares a flight with your trip." : "This member may be able to meet at the arrival airport.",
         name: "Saathi member",
         initials: "S",
       };
     };
 
-    const ownFinalFlight = getFinalFlight(trip);
-
-    if (!ownFinalFlight?.arrivalTime || !ownFinalFlight?.toCode) {
-      return res.status(400).json({
-        success: false,
-        message: "The final flight segment is missing arrival details",
-      });
+    const ownLast = getFinalFlight(trip);
+    if (!ownLast?.arrivalTime || !ownLast?.toCode) {
+      return res.status(400).json({ success: false, message: "The final flight segment is missing arrival details" });
     }
+    const ownArrival = new Date(ownLast.arrivalTime);
+    const fourHrs = 4 * 60 * 60 * 1000;
 
-    const ownArrivalTime = new Date(ownFinalFlight.arrivalTime);
-    const fourHoursMs = 4 * 60 * 60 * 1000;
-
-    for (const candidate of candidates) {
-      if (!candidate.flights?.length) continue;
-
-      // Tier 1: same airline, flight number, and departure date.
-      const sharedFlight = getSharedFlight(trip, candidate);
-
-      if (sharedFlight) {
-        tier1TripIds.add(String(candidate._id));
-        tier1.push(formatMatch(candidate, 1, sharedFlight));
+    for (const cand of candidates) {
+      if (!cand.flights?.length) continue;
+      const shared = getSharedFlight(trip, cand);
+      if (shared) {
+        tier1.push(formatMatch(cand, 1, shared));
         continue;
       }
-
-      // Tier 2: same final arrival airport, within four hours.
-      const candidateFinalFlight = getFinalFlight(candidate);
-
-      if (
-        !candidateFinalFlight?.toCode ||
-        !candidateFinalFlight?.arrivalTime
-      ) {
-        continue;
-      }
-
-      const sameArrivalAirport =
-        normalizeFlightValue(candidateFinalFlight.toCode) ===
-        normalizeFlightValue(ownFinalFlight.toCode);
-
-      const candidateArrivalTime = new Date(
-        candidateFinalFlight.arrivalTime
-      );
-
-      if (
-        !sameArrivalAirport ||
-        Number.isNaN(candidateArrivalTime.getTime())
-      ) {
-        continue;
-      }
-
-      const arrivalDifference = Math.abs(
-        candidateArrivalTime.getTime() - ownArrivalTime.getTime()
-      );
-
-      if (arrivalDifference <= fourHoursMs) {
-        tier2.push(formatMatch(candidate, 2));
+      const cLast = getFinalFlight(cand);
+      if (!cLast?.toCode || !cLast?.arrivalTime) continue;
+      if (normalizeFlightValue(cLast.toCode) !== normalizeFlightValue(ownLast.toCode)) continue;
+      const cArrival = new Date(cLast.arrivalTime);
+      if (Number.isNaN(cArrival.getTime())) continue;
+      if (Math.abs(cArrival.getTime() - ownArrival.getTime()) <= fourHrs) {
+        tier2.push(formatMatch(cand, 2));
       }
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      data: {
-        tripId: String(trip._id),
-        tier1,
-        tier2,
-        totalMatches: tier1.length + tier2.length,
-      },
+      data: { tripId: String(trip._id), tier1, tier2, totalMatches: tier1.length + tier2.length },
     });
   } catch (error) {
-    console.error("Get Matches Error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Unable to find matching trips",
-    });
+    console.error("getMatches Error:", error);
+    return res.status(500).json({ success: false, message: "Unable to find matching trips" });
   }
 };
 
-/* ─────────────────────────────────────────────
-   GET /api/travel-buddy
-   Browse all trips (with search & role filters)
-   ───────────────────────────────────────────── */
+/* ───────────────────────────────────────────────────────
+   Browse All Trips
+   ─────────────────────────────────────────────────────── */
 export const getAllTrips = async (req, res) => {
   try {
     const { search, role } = req.query;
-    const userId = req.user?.id || req.user?.userId || req.user?._id;
-
-    // Submitted offer trips remain private until explicitly published after rejection.
+    const userId = getUserId(req);
     const privateSubmittedTripIds = await getPrivateSubmittedTripIds();
+
     const query = {
       status: "OPEN",
       createdBy: { $ne: userId },
@@ -309,188 +225,101 @@ export const getAllTrips = async (req, res) => {
       isRequestSubmission: { $ne: true },
     };
 
-    // 2. Filter by role if selected (parent vs companion)
-    if (role && ["parent", "companion"].includes(role)) {
-      query.role = role;
-    }
+    if (role && ["parent", "companion"].includes(role)) query.role = role;
 
-    // 3. Handle search (flight number, airline, or airport code)
     if (search) {
-      const escapedSearch = String(search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const searchRegex = new RegExp(escapedSearch, "i");
+      const esc = String(search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const rx = new RegExp(esc, "i");
       query.$or = [
-        { "flights.flightNumber": searchRegex },
-        { "flights.airline": searchRegex },
-        { "flights.fromCode": searchRegex },
-        { "flights.toCode": searchRegex },
+        { "flights.flightNumber": rx },
+        { "flights.airline": rx },
+        { "flights.fromCode": rx },
+        { "flights.toCode": rx },
       ];
     }
 
-    // 4. Fetch trips
     const trips = await TravelBuddy.find(query)
       .populate("createdBy", "firstName lastName profileImage languages")
-      .sort({ createdAt: -1 }) // Newest first
-      .limit(50);
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
 
-    // 5. SMART SORTING: If I have an OPEN trip, show trips that share my flights at the top
+    // Smart sort: same-flight at top
     let myTrip = null;
     if (userId) {
-      myTrip = await TravelBuddy.findOne({ createdBy: userId, status: "OPEN" });
+      myTrip = await TravelBuddy.findOne({ createdBy: userId, status: "OPEN" }).lean();
     }
-
-    if (myTrip && myTrip.flights?.length > 0) {
-      const myFlightNumbers = myTrip.flights.map(f => f.flightNumber);
-
+    if (myTrip?.flights?.length) {
+      const myNums = myTrip.flights.map((f) => f.flightNumber);
       trips.sort((a, b) => {
-        const aMatch = a.flights.some(f => myFlightNumbers.includes(f.flightNumber));
-        const bMatch = b.flights.some(f => myFlightNumbers.includes(f.flightNumber));
-
-        if (aMatch && !bMatch) return -1;
-        if (!aMatch && bMatch) return 1;
+        const aM = a.flights?.some((f) => myNums.includes(f.flightNumber));
+        const bM = b.flights?.some((f) => myNums.includes(f.flightNumber));
+        if (aM && !bM) return -1;
+        if (!aM && bM) return 1;
         return new Date(b.createdAt) - new Date(a.createdAt);
       });
     }
 
-    res.status(200).json({ success: true, data: trips });
+    return res.status(200).json({ success: true, data: trips });
   } catch (error) {
-    console.error("Get All Trips Error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error("getAllTrips Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-
-const getUserId = (req) =>
-  req.user?._id || req.user?.id || req.user?.userId || req.userId;
-
+/* ───────────────────────────────────────────────────────
+   Notify helper
+   ─────────────────────────────────────────────────────── */
 const notifyUser = async ({ userId, actorId, type, title, message, data }) => {
   try {
     const notification = await createNotificationService({
-      userId,
-      actorId,
-      type,
-      title,
-      message,
-      data,
+      userId, actorId, type, title, message, data,
     });
-
     emitNotification(String(userId), {
       _id: String(notification._id),
       userId: String(userId),
       actorId: String(actorId),
-      type,
-      title,
-      message,
-      data: {
-        ...data,
-        _id: String(notification._id),
-      },
+      type, title, message,
+      data: { ...data, _id: String(notification._id) },
       isRead: false,
       createdAt: notification.createdAt,
     });
-  } catch (error) {
-    // The request itself should not fail just because notification delivery failed.
-    console.error("Travel Buddy notification error:", error);
+  } catch (err) {
+    console.error("Travel Buddy notification error:", err);
   }
 };
 
-/**
- * POST /api/v1/travel-buddy/requests
- * Creates the user's trip and submits a pending request against the target trip.
- */
-
+/* ───────────────────────────────────────────────────────
+   Create request
+   ─────────────────────────────────────────────────────── */
 export const createTravelBuddyRequest = async (req, res) => {
   const userId = getUserId(req);
   let submittedTrip = null;
-
   try {
-    if (!userId || !mongoose.isValidObjectId(userId)) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required.",
-      });
-    }
-
-    const { targetTripId, trip: tripPayload, contactConsent } =
-      req.body || {};
-
-    if (contactConsent !== true) {
-      return res.status(400).json({
-        success: false,
-        message: "You must agree to contact sharing before sending this request.",
-      });
-    }
-
-    if (
-      !mongoose.isValidObjectId(targetTripId) ||
-      !tripPayload ||
-      typeof tripPayload !== "object" ||
-      Array.isArray(tripPayload)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "A valid target trip and submitted trip are required.",
-      });
+    if (!userId || !mongoose.isValidObjectId(userId)) return res.status(401).json({ success: false, message: "Authentication required." });
+    const { targetTripId, trip: tripPayload, contactConsent } = req.body || {};
+    if (contactConsent !== true) return res.status(400).json({ success: false, message: "You must agree to contact sharing before sending this request." });
+    if (!mongoose.isValidObjectId(targetTripId) || !tripPayload || typeof tripPayload !== "object") {
+      return res.status(400).json({ success: false, message: "A valid target trip and submitted trip are required." });
     }
 
     const targetTrip = await TravelBuddy.findById(targetTripId);
+    if (!targetTrip) return res.status(404).json({ success: false, message: "The original trip was not found." });
+    if (String(targetTrip.createdBy) === String(userId)) return res.status(400).json({ success: false, message: "You cannot request approval for your own trip." });
+    if (targetTrip.status !== "OPEN") return res.status(409).json({ success: false, message: "This trip is no longer open for requests." });
 
-    if (!targetTrip) {
-      return res.status(404).json({
-        success: false,
-        message: "The original trip was not found.",
-      });
-    }
+    const expectedRole = targetTrip.role === "parent" ? "companion" : "parent";
+    if (tripPayload.role !== expectedRole) return res.status(400).json({ success: false, message: `The submitted trip must use the ${expectedRole} role.` });
 
-    if (String(targetTrip.createdBy) === String(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: "You cannot request approval for your own trip.",
-      });
-    }
+    const existing = await TravelBuddyRequest.findOne({ targetTripId: targetTrip._id, requesterId: userId, status: "PENDING" });
+    if (existing) return res.status(409).json({ success: false, message: "You already have a pending request for this trip.", data: existing });
 
-    if (targetTrip.status !== "OPEN") {
-      return res.status(409).json({
-        success: false,
-        message: "This trip is no longer open for requests.",
-      });
-    }
-
-    const expectedRole =
-      targetTrip.role === "parent" ? "companion" : "parent";
-
-    if (tripPayload.role !== expectedRole) {
-      return res.status(400).json({
-        success: false,
-        message: `The submitted trip must use the ${expectedRole} role.`,
-      });
-    }
-
-    const existingRequest = await TravelBuddyRequest.findOne({
-      targetTripId: targetTrip._id,
-      requesterId: userId,
-      status: "PENDING",
-    });
-
-    if (existingRequest) {
-      return res.status(409).json({
-        success: false,
-        message: "You already have a pending request for this trip.",
-        data: existingRequest,
-      });
-    }
-
-    // Only allow the expected trip fields from the client.
-    const safeTripPayload = {
+    // ★ Only allow the fields we need; disable client override of critical fields
+    const safe = {
       role: tripPayload.role,
       flights: tripPayload.flights,
-      relationship:
-        tripPayload.role === "parent"
-          ? tripPayload.relationship
-          : undefined,
-      ageBand:
-        tripPayload.role === "parent"
-          ? tripPayload.ageBand
-          : undefined,
+      relationship: tripPayload.role === "parent" ? tripPayload.relationship : undefined,
+      ageBand: tripPayload.role === "parent" ? tripPayload.ageBand : undefined,
       languages: tripPayload.languages,
       help: tripPayload.help,
       pickup: tripPayload.pickup,
@@ -498,13 +327,9 @@ export const createTravelBuddyRequest = async (req, res) => {
       matchedWith: null,
     };
 
-    submittedTrip = await TravelBuddy.create({
-      ...safeTripPayload,
-      createdBy: userId,
-    });
+    submittedTrip = await TravelBuddy.create({ ...safe, createdBy: userId });
 
     let request;
-
     try {
       request = await TravelBuddyRequest.create({
         targetTripId: targetTrip._id,
@@ -517,19 +342,13 @@ export const createTravelBuddyRequest = async (req, res) => {
         recipientConsentAt: null,
         status: "PENDING",
       });
-    } catch (error) {
+    } catch (err) {
       await TravelBuddy.findByIdAndDelete(submittedTrip._id);
-      throw error;
+      throw err;
     }
 
-    const requester = await User.findById(userId)
-      .select("firstName lastName")
-      .lean();
-
-    const requesterName =
-      [requester?.firstName, requester?.lastName]
-        .filter(Boolean)
-        .join(" ") || "A Saathi member";
+    const requester = await User.findById(userId).select("firstName lastName").lean();
+    const requesterName = [requester?.firstName, requester?.lastName].filter(Boolean).join(" ") || "A Saathi member";
 
     await notifyUser({
       userId: targetTrip.createdBy,
@@ -545,96 +364,53 @@ export const createTravelBuddyRequest = async (req, res) => {
       },
     });
 
-    return res.status(201).json({
-      success: true,
-      message: "Your request has been sent for approval.",
-      data: {
-        request,
-        submittedTrip,
-      },
-    });
+    return res.status(201).json({ success: true, message: "Your request has been sent for approval.", data: { request, submittedTrip } });
   } catch (error) {
     console.error("Create Travel Buddy Request Error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to submit the Travel Buddy request.",
-    });
+    return res.status(500).json({ success: false, message: "Unable to submit the Travel Buddy request." });
   }
 };
 
-
-/**
- * GET /api/v1/travel-buddy/requests/received
- */
+/* ───────────────────────────────────────────────────────
+   Received / Sent
+   ─────────────────────────────────────────────────────── */
 export const getReceivedTravelBuddyRequests = async (req, res) => {
   const userId = getUserId(req);
-
   try {
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required.",
-      });
-    }
-
-    const requests = await TravelBuddyRequest.find({
-      recipientId: userId,
-    })
+    if (!userId) return res.status(401).json({ success: false, message: "Authentication required." });
+    const requests = await TravelBuddyRequest.find({ recipientId: userId })
       .populate("requesterId", "firstName lastName profileImage")
       .populate("targetTripId")
       .populate("submittedTripId")
       .sort({ createdAt: -1 })
       .lean();
-
     return res.status(200).json({ success: true, data: requests });
   } catch (error) {
-    console.error("Get Received Travel Buddy Requests Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Unable to fetch received requests.",
-    });
+    console.error("getReceivedTravelBuddyRequests Error:", error);
+    return res.status(500).json({ success: false, message: "Unable to fetch received requests." });
   }
 };
 
-/**
- * GET /api/v1/travel-buddy/requests/sent
- */
 export const getSentTravelBuddyRequests = async (req, res) => {
   const userId = getUserId(req);
-
   try {
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required.",
-      });
-    }
-
-    const requests = await TravelBuddyRequest.find({
-      requesterId: userId,
-    })
+    if (!userId) return res.status(401).json({ success: false, message: "Authentication required." });
+    const requests = await TravelBuddyRequest.find({ requesterId: userId })
       .populate("recipientId", "firstName lastName profileImage")
       .populate("targetTripId")
       .populate("submittedTripId")
       .sort({ createdAt: -1 })
       .lean();
-
     return res.status(200).json({ success: true, data: requests });
   } catch (error) {
-    console.error("Get Sent Travel Buddy Requests Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Unable to fetch sent requests.",
-    });
+    console.error("getSentTravelBuddyRequests Error:", error);
+    return res.status(500).json({ success: false, message: "Unable to fetch sent requests." });
   }
 };
 
-/**
- * PATCH /api/v1/travel-buddy/requests/:id/respond
- * Only the original target-trip owner may approve or reject.
- */
-
+/* ───────────────────────────────────────────────────────
+   Respond (accept / reject)
+   ─────────────────────────────────────────────────────── */
 export const respondToTravelBuddyRequest = async (req, res) => {
   const userId = getUserId(req);
   const { id } = req.params;
@@ -642,124 +418,40 @@ export const respondToTravelBuddyRequest = async (req, res) => {
   const contactConsent = req.body?.contactConsent === true;
 
   try {
-    if (!userId || !mongoose.isValidObjectId(userId)) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required.",
-      });
-    }
+    if (!userId || !mongoose.isValidObjectId(userId)) return res.status(401).json({ success: false, message: "Authentication required." });
+    if (!mongoose.isValidObjectId(id)) return res.status(400).json({ success: false, message: "Invalid request ID." });
+    if (!["accept", "reject"].includes(action)) return res.status(400).json({ success: false, message: "Action must be accept or reject." });
+    if (action === "accept" && !contactConsent) return res.status(400).json({ success: false, message: "You must agree to contact sharing before approving this request." });
 
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid request ID.",
-      });
-    }
+    const request = await TravelBuddyRequest.findOne({ _id: id, recipientId: userId });
+    if (!request) return res.status(404).json({ success: false, message: "Request not found for this account." });
+    if (request.status !== "PENDING") return res.status(409).json({ success: false, message: "This request has already been processed." });
 
-    if (!["accept", "reject"].includes(action)) {
-      return res.status(400).json({
-        success: false,
-        message: "Action must be accept or reject.",
-      });
-    }
+    const targetTrip = await TravelBuddy.findOne({ _id: request.targetTripId, createdBy: userId, status: "OPEN" });
+    const submittedTrip = await TravelBuddy.findOne({ _id: request.submittedTripId, createdBy: request.requesterId, status: "OPEN" });
 
-    if (action === "accept" && !contactConsent) {
-      return res.status(400).json({
-        success: false,
-        message: "You must agree to contact sharing before approving this request.",
-      });
-    }
-
-    const request = await TravelBuddyRequest.findOne({
-      _id: id,
-      recipientId: userId,
-    });
-
-    if (!request) {
-      return res.status(404).json({
-        success: false,
-        message: "Request not found for this account.",
-      });
-    }
-
-    if (request.status !== "PENDING") {
-      return res.status(409).json({
-        success: false,
-        message: "This request has already been processed.",
-      });
-    }
-
-    const targetTrip = await TravelBuddy.findOne({
-      _id: request.targetTripId,
-      createdBy: userId,
-      status: "OPEN",
-    });
-
-    const submittedTrip = await TravelBuddy.findOne({
-      _id: request.submittedTripId,
-      createdBy: request.requesterId,
-      status: "OPEN",
-    });
-
-    if (!targetTrip || !submittedTrip) {
-      return res.status(409).json({
-        success: false,
-        message: "One of the trips is no longer open.",
-      });
-    }
+    if (!targetTrip || !submittedTrip) return res.status(409).json({ success: false, message: "One of the trips is no longer open." });
 
     if (action === "reject") {
       const rejected = await TravelBuddyRequest.findOneAndUpdate(
-        {
-          _id: id,
-          recipientId: userId,
-          status: "PENDING",
-        },
-        {
-          $set: {
-            status: "REJECTED",
-            respondedAt: new Date(),
-          },
-        },
+        { _id: id, recipientId: userId, status: "PENDING" },
+        { $set: { status: "REJECTED", respondedAt: new Date() } },
         { new: true }
       );
-
-      if (!rejected) {
-        return res.status(409).json({
-          success: false,
-          message: "This request was already processed.",
-        });
-      }
-
+      if (!rejected) return res.status(409).json({ success: false, message: "This request was already processed." });
       await notifyUser({
-        userId: request.requesterId,
-        actorId: userId,
+        userId: request.requesterId, actorId: userId,
         type: "travel_buddy_request_rejected",
         title: "Travel Buddy request declined",
         message: "Your Travel Buddy request was declined.",
-        data: {
-          requestId: String(request._id),
-          targetTripId: String(request.targetTripId),
-          submittedTripId: String(request.submittedTripId),
-        },
+        data: { requestId: String(request._id), targetTripId: String(request.targetTripId), submittedTripId: String(request.submittedTripId) },
       });
-
-      return res.status(200).json({
-        success: true,
-        message: "Request rejected.",
-        data: rejected,
-      });
+      return res.status(200).json({ success: true, message: "Request rejected.", data: rejected });
     }
 
-    // Claim the request once. This prevents two simultaneous responses
-    // from approving the same pending request.
+    // Accept
     const accepted = await TravelBuddyRequest.findOneAndUpdate(
-      {
-        _id: id,
-        recipientId: userId,
-        status: "PENDING",
-        requesterContactConsent: true,
-      },
+      { _id: id, recipientId: userId, status: "PENDING", requesterContactConsent: true },
       {
         $set: {
           status: "ACCEPTED",
@@ -770,253 +462,102 @@ export const respondToTravelBuddyRequest = async (req, res) => {
       },
       { new: true }
     );
+    if (!accepted) return res.status(409).json({ success: false, message: "The request was already processed or requester consent is missing." });
 
-    if (!accepted) {
-      return res.status(409).json({
-        success: false,
-        message: "The request was already processed or requester consent is missing.",
-      });
-    }
-
-    // Match both trips.
     const updatedTarget = await TravelBuddy.findOneAndUpdate(
-      {
-        _id: targetTrip._id,
-        createdBy: userId,
-        status: "OPEN",
-      },
-      {
-        $set: {
-          status: "MATCHED",
-          matchedWith: request.requesterId,
-        },
-      },
+      { _id: targetTrip._id, createdBy: userId, status: "OPEN" },
+      { $set: { status: "MATCHED", matchedWith: request.requesterId } },
       { new: true }
     );
-
     const updatedSubmitted = await TravelBuddy.findOneAndUpdate(
-      {
-        _id: submittedTrip._id,
-        createdBy: request.requesterId,
-        status: "OPEN",
-      },
-      {
-        $set: {
-          status: "MATCHED",
-          matchedWith: userId,
-        },
-      },
+      { _id: submittedTrip._id, createdBy: request.requesterId, status: "OPEN" },
+      { $set: { status: "MATCHED", matchedWith: userId } },
       { new: true }
     );
 
     if (!updatedTarget || !updatedSubmitted) {
-      // Restore the request state if matching could not finish.
-      // Also restore any trip this operation changed.
       await Promise.all([
-        TravelBuddy.findOneAndUpdate(
-          { _id: targetTrip._id, status: "MATCHED", matchedWith: request.requesterId },
-          { $set: { status: "OPEN", matchedWith: null } }
-        ),
-        TravelBuddy.findOneAndUpdate(
-          { _id: submittedTrip._id, status: "MATCHED", matchedWith: userId },
-          { $set: { status: "OPEN", matchedWith: null } }
-        ),
-        TravelBuddyRequest.findOneAndUpdate(
-          { _id: id, status: "ACCEPTED" },
-          {
-            $set: {
-              status: "PENDING",
-              respondedAt: null,
-              recipientContactConsent: false,
-              recipientConsentAt: null,
-            },
-          }
-        ),
+        TravelBuddy.findOneAndUpdate({ _id: targetTrip._id, status: "MATCHED", matchedWith: request.requesterId }, { $set: { status: "OPEN", matchedWith: null } }),
+        TravelBuddy.findOneAndUpdate({ _id: submittedTrip._id, status: "MATCHED", matchedWith: userId }, { $set: { status: "OPEN", matchedWith: null } }),
+        TravelBuddyRequest.findOneAndUpdate({ _id: id, status: "ACCEPTED" }, { $set: { status: "PENDING", respondedAt: null, recipientContactConsent: false, recipientConsentAt: null } }),
       ]);
-
-      return res.status(409).json({
-        success: false,
-        message: "A trip changed while processing. Refresh and try again.",
-      });
+      return res.status(409).json({ success: false, message: "A trip changed while processing. Refresh and try again." });
     }
 
-    // Decline other pending requests targeting this now-matched trip.
     await TravelBuddyRequest.updateMany(
-      {
-        targetTripId: targetTrip._id,
-        _id: { $ne: request._id },
-        status: "PENDING",
-      },
-      {
-        $set: {
-          status: "REJECTED",
-          respondedAt: new Date(),
-        },
-      }
+      { targetTripId: targetTrip._id, _id: { $ne: request._id }, status: "PENDING" },
+      { $set: { status: "REJECTED", respondedAt: new Date() } }
     );
 
     await notifyUser({
-      userId: request.requesterId,
-      actorId: userId,
+      userId: request.requesterId, actorId: userId,
       type: "travel_buddy_request_accepted",
       title: "Travel Buddy request approved",
       message: "Your Travel Buddy request was approved.",
-      data: {
-        requestId: String(request._id),
-        targetTripId: String(request.targetTripId),
-        submittedTripId: String(request.submittedTripId),
-      },
+      data: { requestId: String(request._id), targetTripId: String(request.targetTripId), submittedTripId: String(request.submittedTripId) },
     });
 
     return res.status(200).json({
       success: true,
       message: "Request approved. The trips are now matched.",
-      data: {
-        request: accepted,
-        targetTrip: updatedTarget,
-        submittedTrip: updatedSubmitted,
-      },
+      data: { request: accepted, targetTrip: updatedTarget, submittedTrip: updatedSubmitted },
     });
   } catch (error) {
     console.error("Respond to Travel Buddy Request Error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to process the Travel Buddy request.",
-    });
+    return res.status(500).json({ success: false, message: "Unable to process the Travel Buddy request." });
   }
 };
 
-
-/**
- * GET /api/v1/travel-buddy/requests/:id/contact
- * Contact details are returned only for an accepted request, to either participant.
- */
-
+/* ───────────────────────────────────────────────────────
+   Contact / accepted details
+   ─────────────────────────────────────────────────────── */
 export const getTravelBuddyRequestContact = async (req, res) => {
   const userId = getUserId(req);
   const { id } = req.params;
-
   try {
-    if (!userId || !mongoose.isValidObjectId(userId)) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required.",
-      });
-    }
-
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid request ID.",
-      });
-    }
+    if (!userId || !mongoose.isValidObjectId(userId)) return res.status(401).json({ success: false, message: "Authentication required." });
+    if (!mongoose.isValidObjectId(id)) return res.status(400).json({ success: false, message: "Invalid request ID." });
 
     const request = await TravelBuddyRequest.findOne({
-      _id: id,
-      status: "ACCEPTED",
-      requesterContactConsent: true,
-      recipientContactConsent: true,
-      $or: [
-        { requesterId: userId },
-        { recipientId: userId },
-      ],
+      _id: id, status: "ACCEPTED",
+      requesterContactConsent: true, recipientContactConsent: true,
+      $or: [{ requesterId: userId }, { recipientId: userId }],
     }).lean();
+    if (!request) return res.status(403).json({ success: false, message: "Contact details are available only after both members consent and the request is approved." });
 
-    if (!request) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "Contact details are available only after both members consent and the request is approved.",
-      });
-    }
-
-    const otherUserId =
-      String(request.requesterId) === String(userId)
-        ? request.recipientId
-        : request.requesterId;
-
-    const contact = await User.findById(otherUserId)
-      .select(
-        "firstName lastName profileImage mobile messageNumber isMessageApproved"
-      )
-      .lean();
-
-    if (!contact) {
-      return res.status(404).json({
-        success: false,
-        message: "Member not found.",
-      });
-    }
+    const otherUserId = String(request.requesterId) === String(userId) ? request.recipientId : request.requesterId;
+    const contact = await User.findById(otherUserId).select("firstName lastName profileImage mobile messageNumber isMessageApproved").lean();
+    if (!contact) return res.status(404).json({ success: false, message: "Member not found." });
 
     return res.status(200).json({
       success: true,
       data: {
-        firstName: contact.firstName,
-        lastName: contact.lastName,
+        firstName: contact.firstName, lastName: contact.lastName,
         profileImage: contact.profileImage,
         mobile: contact.isMessageApproved ? contact.mobile : null,
-        messageNumber: contact.isMessageApproved
-          ? contact.messageNumber
-          : null,
+        messageNumber: contact.isMessageApproved ? contact.messageNumber : null,
         isMessageApproved: Boolean(contact.isMessageApproved),
       },
     });
   } catch (error) {
-    console.error("Get Travel Buddy Contact Error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to retrieve contact details.",
-    });
+    console.error("getTravelBuddyRequestContact Error:", error);
+    return res.status(500).json({ success: false, message: "Unable to retrieve contact details." });
   }
 };
 
-
-
 export const getTripById = async (req, res) => {
   try {
-    const userId =
-      req.user?.id || req.user?.userId || req.user?._id;
+    const userId = getUserId(req);
     const { id } = req.params;
+    if (!userId) return res.status(401).json({ success: false, message: "Authentication required." });
+    if (!mongoose.isValidObjectId(id)) return res.status(400).json({ success: false, message: "Invalid trip ID." });
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required.",
-      });
-    }
-
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid trip ID.",
-      });
-    }
-
-    // Only the owner can load their own trip for match management.
-    const trip = await TravelBuddy.findOne({
-      _id: id,
-      createdBy: userId,
-    }).lean();
-
-    if (!trip) {
-      return res.status(404).json({
-        success: false,
-        message: "Trip not found.",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: trip,
-    });
+    const trip = await TravelBuddy.findOne({ _id: id, createdBy: userId }).lean();
+    if (!trip) return res.status(404).json({ success: false, message: "Trip not found." });
+    return res.status(200).json({ success: true, data: trip });
   } catch (error) {
     console.error("getTripById failed:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Unable to load trip.",
-    });
+    return res.status(500).json({ success: false, message: "Unable to load trip." });
   }
 };
 
@@ -1024,65 +565,24 @@ export const getAcceptedTripDetails = async (req, res) => {
   try {
     const userId = getUserId(req);
     const { tripId } = req.params;
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required.",
-      });
-    }
-
-    if (!mongoose.isValidObjectId(tripId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid trip ID.",
-      });
-    }
+    if (!userId) return res.status(401).json({ success: false, message: "Authentication required." });
+    if (!mongoose.isValidObjectId(tripId)) return res.status(400).json({ success: false, message: "Invalid trip ID." });
 
     const request = await TravelBuddyRequest.findOne({
       status: "ACCEPTED",
-      $or: [
-        { targetTripId: tripId },
-        { submittedTripId: tripId },
-      ],
-      $and: [
-        {
-          $or: [
-            { requesterId: userId },
-            { recipientId: userId },
-          ],
-        },
-      ],
+      $or: [{ targetTripId: tripId }, { submittedTripId: tripId }],
+      $and: [{ $or: [{ requesterId: userId }, { recipientId: userId }] }],
     }).lean();
-
-    if (!request) {
-      return res.status(404).json({
-        success: false,
-        message: "No accepted trip was found for this account.",
-      });
-    }
+    if (!request) return res.status(404).json({ success: false, message: "No accepted trip was found for this account." });
 
     const [targetTrip, submittedTrip] = await Promise.all([
       TravelBuddy.findById(request.targetTripId).lean(),
       TravelBuddy.findById(request.submittedTripId).lean(),
     ]);
+    if (!targetTrip || !submittedTrip) return res.status(404).json({ success: false, message: "Matched trip details could not be found." });
 
-    if (!targetTrip || !submittedTrip) {
-      return res.status(404).json({
-        success: false,
-        message: "Matched trip details could not be found.",
-      });
-    }
-
-    const otherUserId =
-      String(request.requesterId) === String(userId)
-        ? request.recipientId
-        : request.requesterId;
-
-    // Return only intended contact fields, not the full user document.
-    const otherTraveller = await User.findById(otherUserId)
-      .select("name fullName firstName lastName phone mobile email")
-      .lean();
+    const otherUserId = String(request.requesterId) === String(userId) ? request.recipientId : request.requesterId;
+    const otherTraveller = await User.findById(otherUserId).select("name fullName firstName lastName phone mobile email").lean();
 
     return res.status(200).json({
       success: true,
@@ -1090,32 +590,15 @@ export const getAcceptedTripDetails = async (req, res) => {
         requestId: String(request._id),
         targetTrip,
         submittedTrip,
-        otherTraveller: otherTraveller
-          ? {
-              name:
-                otherTraveller.name ||
-                otherTraveller.fullName ||
-                [
-                  otherTraveller.firstName,
-                  otherTraveller.lastName,
-                ]
-                  .filter(Boolean)
-                  .join(" ") ||
-                "Travel Buddy",
-              phone:
-                otherTraveller.phone ||
-                otherTraveller.mobile ||
-                "",
-              email: otherTraveller.email || "",
-            }
-          : null,
+        otherTraveller: otherTraveller ? {
+          name: otherTraveller.name || otherTraveller.fullName || [otherTraveller.firstName, otherTraveller.lastName].filter(Boolean).join(" ") || "Travel Buddy",
+          phone: otherTraveller.phone || otherTraveller.mobile || "",
+          email: otherTraveller.email || "",
+        } : null,
       },
     });
   } catch (error) {
     console.error("getAcceptedTripDetails failed:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Unable to load accepted trip details.",
-    });
+    return res.status(500).json({ success: false, message: "Unable to load accepted trip details." });
   }
 };
