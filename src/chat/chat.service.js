@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Chat from "./chat.model.js";
 import Message from "./message.model.js";
 import User from "../model/user.js";
+import { getProfileImageSignedUrl } from "../controller/s3Controller.js"; // <-- ADDED
 import {
   getBlockStatusService,
   listMutuallyBlockedIdsService,
@@ -11,6 +12,43 @@ const DELETE_FOR_EVERYONE_WINDOW_MS = 15 * 60 * 1000;
 
 const createParticipantKey = (userId1, userId2) =>
   [String(userId1), String(userId2)].sort().join("_");
+
+/* ─── Helper: sign profile images ─── */
+const addProfileImageUrl = async (user) => {
+  if (!user || typeof user !== "object") return user;
+  const userData = typeof user.toObject === "function" ? user.toObject() : { ...user };
+  if (!userData.profileImage) {
+    return { ...userData, profileImageUrl: null };
+  }
+  try {
+    console.log("Signing image for:", userData.firstName, "Key:", userData.profileImage); // <-- ADD THIS
+    const url = await getProfileImageSignedUrl(userData.profileImage);
+    console.log("Success! Signed URL:", url); // <-- ADD THIS
+    return {
+      ...userData,
+      profileImageUrl: url,
+    };
+  } catch (error) {
+    console.error("🔥 SIGNING FAILED for:", userData.profileImage, "Error:", error.message); // <-- ADD THIS
+    return { ...userData, profileImageUrl: null };
+  }
+};
+
+const formatChat = async (chat) => {
+  if (!chat) return chat;
+  const chatData = typeof chat.toObject === "function" ? chat.toObject() : { ...chat };
+  
+  if (chatData.participants && Array.isArray(chatData.participants)) {
+    chatData.participants = await Promise.all(
+      chatData.participants.map(addProfileImageUrl)
+    );
+  }
+  
+  if (chatData.lastMessage && chatData.lastMessage.senderId) {
+    chatData.lastMessage.senderId = await addProfileImageUrl(chatData.lastMessage.senderId);
+  }
+  return chatData;
+};
 
 /* ─────────── Get or create ─────────── */
 export const getOrCreateChatService = async ({
@@ -52,7 +90,6 @@ export const getOrCreateChatService = async ({
       .populate("lastMessage");
   }
 
-  // If the chat was hidden for this user (delete-from-list), unhide it
   if (chat.hiddenFor?.some((id) => String(id) === String(currentUserId))) {
     await Chat.updateOne(
       { _id: chat._id },
@@ -60,10 +97,10 @@ export const getOrCreateChatService = async ({
     );
   }
 
-  return chat;
+  return await formatChat(chat);
 };
 
-/* ─────────── Get all conversations (existing) ─────────── */
+/* ─────────── Get all conversations ─────────── */
 export const getUserChatsService = async (userId) => {
   const blockedIds = await listMutuallyBlockedIdsService(userId);
   const blockedArr = [...blockedIds].map(
@@ -73,7 +110,6 @@ export const getUserChatsService = async (userId) => {
   const chats = await Chat.find({
     participants: userId,
     hiddenFor: { $ne: userId },
-    // exclude chats where the other participant is blocked (either side)
     participants: { $nin: blockedArr, $in: [userId] },
   })
     .populate("participants", "firstName lastName profileImage")
@@ -84,7 +120,7 @@ export const getUserChatsService = async (userId) => {
     .sort({ lastMessageAt: -1, updatedAt: -1 })
     .lean();
 
-  return chats;
+  return await Promise.all(chats.map(formatChat));
 };
 
 /* ─────────── Get messages ─────────── */
@@ -120,8 +156,10 @@ export const getChatMessagesService = async ({
     Message.countDocuments(baseFilter),
   ]);
 
-  // Convert deletedForEveryone messages into tombstones
-  const sanitized = messages.reverse().map((m) => {
+  // Convert tombstones AND sign images
+  const sanitized = await Promise.all(messages.reverse().map(async (m) => {
+    m.senderId = await addProfileImageUrl(m.senderId);
+    
     if (m.deletedForEveryone) {
       return {
         ...m,
@@ -131,7 +169,7 @@ export const getChatMessagesService = async ({
       };
     }
     return m;
-  });
+  }));
 
   return {
     messages: sanitized,
@@ -144,7 +182,7 @@ export const getChatMessagesService = async ({
   };
 };
 
-/* ─────────── Send message (with block check) ─────────── */
+/* ─────────── Send message ─────────── */
 export const sendMessageService = async ({ chatId, senderId, text }) => {
   if (!mongoose.Types.ObjectId.isValid(chatId)) {
     throw new Error("Invalid chat ID");
@@ -182,16 +220,19 @@ export const sendMessageService = async ({ chatId, senderId, text }) => {
     status: "SENT",
   });
 
-  // Unhide chat for both users (a new message resurfaces it)
   await Chat.findByIdAndUpdate(chatId, {
     lastMessage: message._id,
     lastMessageAt: message.createdAt,
     $pull: { hiddenFor: { $in: chat.participants } },
   });
 
-  return Message.findById(message._id)
+  const populatedMessage = await Message.findById(message._id)
     .populate("senderId", "firstName lastName profileImage")
     .lean();
+    
+  populatedMessage.senderId = await addProfileImageUrl(populatedMessage.senderId);
+
+  return populatedMessage;
 };
 
 /* ─────────── Mark read ─────────── */
@@ -211,7 +252,7 @@ export const markChatMessagesAsReadService = async ({ chatId, userId }) => {
   return { modifiedCount: result.modifiedCount };
 };
 
-/* ─────────── NEW: List all chattable users + existing chats ─────────── */
+/* ─────────── List all chattable users + existing chats ─────────── */
 export const listChattableUsersService = async ({
   userId,
   search = "",
@@ -251,7 +292,6 @@ export const listChattableUsersService = async ({
     User.countDocuments(userFilter),
   ]);
 
-  // Attach lastMessage info for users who already have a chat with me
   const chats = await Chat.find({
     participants: userObjectId,
     hiddenFor: { $ne: userObjectId },
@@ -267,14 +307,17 @@ export const listChattableUsersService = async ({
     if (other) chatByOtherUserId[String(other)] = c;
   });
 
-  const enriched = users.map((u) => {
+  const enriched = await Promise.all(users.map(async (u) => {
     const chat = chatByOtherUserId[String(u._id)];
     const last = chat?.lastMessage;
+    const signedUser = await addProfileImageUrl(u);
+
     return {
       _id: u._id,
       firstName: u.firstName,
       lastName: u.lastName,
       profileImage: u.profileImage,
+      profileImageUrl: signedUser.profileImageUrl, // <-- ADDED SIGNED URL
       lastMessage: last?.deletedForEveryone
         ? "This message was deleted"
         : last?.text || null,
@@ -282,9 +325,8 @@ export const listChattableUsersService = async ({
       chatId: chat?._id || null,
       isBlockedByMe: false,
     };
-  });
+  }));
 
-  // Sort: chatted-with first (by lastMessageAt desc), then the rest alphabetically
   enriched.sort((a, b) => {
     const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
     const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
@@ -305,7 +347,7 @@ export const listChattableUsersService = async ({
   };
 };
 
-/* ─────────── NEW: Delete a message ─────────── */
+/* ─────────── Delete a message ─────────── */
 export const deleteMessageService = async ({
   messageId,
   userId,
@@ -339,7 +381,6 @@ export const deleteMessageService = async ({
     };
   }
 
-  // scope === "everyone"
   if (String(message.senderId) !== String(userId)) {
     throw new Error("Only the sender can delete for everyone");
   }
@@ -367,7 +408,7 @@ export const deleteMessageService = async ({
   };
 };
 
-/* ─────────── NEW: Hide chat from my list ─────────── */
+/* ─────────── Hide chat from my list ─────────── */
 export const hideChatForUserService = async ({ chatId, userId }) => {
   if (!mongoose.Types.ObjectId.isValid(chatId)) {
     throw new Error("Invalid chat ID");

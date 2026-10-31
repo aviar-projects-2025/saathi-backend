@@ -9,6 +9,7 @@ import {
   hideChatForUserService,
 } from "./chat.service.js";
 import { getIO } from "../../socket.js";
+import Chat from "./chat.model.js";
 
 /**
  * Create or get a 1-to-1 chat
@@ -141,6 +142,7 @@ export const sendMessage = async (req, res) => {
 /**
  * Mark messages as read
  */
+
 export const markChatMessagesAsRead = async (req, res) => {
   try {
     const userId = req.user.id || req.user?.userId;
@@ -151,21 +153,45 @@ export const markChatMessagesAsRead = async (req, res) => {
       userId,
     });
 
+    // ⭐ NEW: notify the sender so their ticks turn blue in realtime
+    if (result.modifiedCount > 0) {
+      try {
+        const io = getIO();
+        const chat = await Chat.findById(chatId).lean();
+
+        if (chat) {
+          // find the OTHER participant (the one whose messages were just read)
+          const otherParticipant = chat.participants.find(
+            (pid) => String(pid) !== String(userId)
+          );
+
+          if (otherParticipant) {
+            io.to(String(otherParticipant)).emit("chat:read", {
+              chatId: String(chatId),
+              readerId: String(userId),
+            });
+            console.log(
+              "📘 [READ] chatId:", chatId,
+              "| readerId:", userId,
+              "| → notifying:", otherParticipant
+            );
+          }
+        }
+      } catch (emitErr) {
+        console.error("Failed to emit chat:read:", emitErr.message);
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: "Messages marked as read",
       data: result,
     });
   } catch (error) {
-    console.error(
-      "markChatMessagesAsRead error:",
-      error
-    );
-
+    console.error("markChatMessagesAsRead error:", error);
     return res.status(400).json({
       success: false,
-      message:
-        error.message || "Failed to mark messages as read",
+      message: error.message || "Failed to mark messages as read",
     });
   }
 };

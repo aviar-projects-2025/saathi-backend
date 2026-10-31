@@ -1,11 +1,29 @@
 import cloudinary from "../../config/cloudinary.js";
 import Community from "../model/community.js";
+import { getProfileImageSignedUrl } from "../controller/s3Controller.js"; // <-- ADDED
 
-
+/* ─── Helper: sign profile images ─── */
+const addProfileImageUrl = async (user) => {
+  if (!user || typeof user !== "object") return user;
+  const userData = typeof user.toObject === "function" ? user.toObject() : { ...user };
+  if (!userData.profileImage) {
+    return { ...userData, profileImageUrl: null };
+  }
+  try {
+    return {
+      ...userData,
+      profileImageUrl: await getProfileImageSignedUrl(userData.profileImage),
+    };
+  } catch (error) {
+    console.error("Failed to sign profile image URL:", error.message);
+    return { ...userData, profileImageUrl: null };
+  }
+};
 
 export const createPostService = async (data) => {
   return await Community.create(data);
-}
+};
+
 export const deletePostService = async (postId, userId) => {
   const post = await Community.findById(postId);
   if (!post) {
@@ -30,11 +48,6 @@ export const deletePostService = async (postId, userId) => {
     message: "Post deleted successfully",
   };
 };
-// export const getPostsService = async () => {
-//   return await Community.find()
-//   .populate("authorId", "firstName lastName referralCode profileImage bio zipcode")
-//   .sort({ createdAt: -1 });;
-// }
 
 export const getPostsService = async (page = 1, limit = 10) => {
   const skip = (page - 1) * limit;
@@ -51,10 +64,17 @@ export const getPostsService = async (page = 1, limit = 10) => {
 
   const total = await Community.countDocuments();
 
-  const formattedPosts = posts.map((post) => ({
-    ...post,
-    commentCount: post.comments?.length || 0,
-  }));
+  // Format posts and sign author images
+  const formattedPosts = await Promise.all(
+    posts.map(async (post) => {
+      const signedAuthor = await addProfileImageUrl(post.authorId);
+      return {
+        ...post,
+        authorId: signedAuthor,
+        commentCount: post.comments?.length || 0,
+      };
+    })
+  );
 
   return {
     posts: formattedPosts,
@@ -66,6 +86,7 @@ export const getPostsService = async (page = 1, limit = 10) => {
     },
   };
 };
+
 export const getProfilePostsService = async (
   authorId,
   page = 1,
@@ -81,13 +102,21 @@ export const getProfilePostsService = async (
 
   const total = await Community.countDocuments({ authorId });
 
-  return {
-    posts: posts.map((post) => ({
-      ...post,
-      commentCount: post?.comments?.length || 0,
-      description: post?.description
-    })),
+  // Format posts and sign author images
+  const formattedPosts = await Promise.all(
+    posts.map(async (post) => {
+      const signedAuthor = await addProfileImageUrl(post.authorId);
+      return {
+        ...post,
+        authorId: signedAuthor,
+        commentCount: post?.comments?.length || 0,
+        description: post?.description,
+      };
+    })
+  );
 
+  return {
+    posts: formattedPosts,
     pagination: {
       page,
       limit,
