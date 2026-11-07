@@ -161,7 +161,7 @@ export const validateReferralInvitation = async (req, res) => {
 
     /* ── 1. Try permanent user token (LINK channel) ── */
     const userByToken = await User.findOne({ inviteToken: token }).select(
-      "firstName lastName referralCode"
+      "firstName lastName referralCode createdAt city"
     );
     if (userByToken) {
       return res.status(200).json({
@@ -169,6 +169,8 @@ export const validateReferralInvitation = async (req, res) => {
         invitation: {
           referrerName: `${userByToken.firstName} ${userByToken.lastName}`.trim(),
           referralCode: userByToken.referralCode,
+          city : userByToken.city,
+          createdAt : userByToken.createdAt,
         },
       });
     }

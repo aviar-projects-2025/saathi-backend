@@ -1,9 +1,49 @@
+// controllers/referralController.js
 import { sendApprovalEmail } from '../../config/sendMail.js';
 import twilioClient from '../../config/twilio.js';
 import { emitNotification } from '../../socket.js';
 import User from '../model/user.js';
 import { buildNotification, createNotificationService } from '../service/notification.js';
-import { getReferralService, updateService, removeService } from '../service/referral.js'
+import { getReferralService, updateService, removeService } from '../service/referral.js';
+
+
+/**
+ * Normalize a stored mobile number to E.164 for Twilio.
+ * User.mobile is already stored in E.164 by the auth flow, but this guard
+ * protects against legacy/edge-case values and prevents a bad `to` from
+ * throwing at send time.
+ */
+const normalizeApprovalSmsNumber = (mobile) => {
+    if (!mobile) return null;
+
+    let phone = String(mobile).trim().replace(/[\s()-]/g, "");
+
+    if (phone.startsWith("+")) {
+        return /^\+[1-9]\d{7,14}$/.test(phone) ? phone : null;
+    }
+
+    // 10-digit Indian
+    if (phone.length === 10 && phone.startsWith("9")) {
+        return `+91${phone}`;
+    }
+
+    // 10-digit US
+    if (phone.length === 10) {
+        return `+1${phone}`;
+    }
+
+    // 91XXXXXXXXXX
+    if (phone.length === 12 && phone.startsWith("91")) {
+        return `+${phone}`;
+    }
+
+    // 1XXXXXXXXXX
+    if (phone.length === 11 && phone.startsWith("1")) {
+        return `+${phone}`;
+    }
+
+    return null;
+};
 
 
 export const getReferrals = async (req, res) => {
@@ -43,10 +83,8 @@ export const updateReferrals = async (req, res) => {
             });
         }
 
-        console.log(id, data,'id, data')
-
         const approvedUser = await updateService(id, data);
-        console.log(approvedUser,'approvedUser')
+
         if (!approvedUser) {
             return res.status(404).json({
                 status: false,
@@ -54,7 +92,7 @@ export const updateReferrals = async (req, res) => {
             });
         }
 
-        const user = approvedUser; // they're the same object now
+        const user = approvedUser;
         const status = data.refApprove;
 
         const notifType =
@@ -99,6 +137,36 @@ export const updateReferrals = async (req, res) => {
             console.error("Approval email failed (non-fatal):", mailErr);
         }
 
+        // ----- SMS the user on approval -----
+        if (status === "Approved") {
+            try {
+                const phoneNumber = normalizeApprovalSmsNumber(user?.mobile);
+
+                if (phoneNumber) {
+                    const smsBody =
+                        `${fullName ? `Hi ${fullName}, ` : ""}` +
+                        `your Saathi Rides request has been approved.\n\n` +
+                        `You can now log in at https://saathirides.net/login ` +
+                        `and start finding rides.\n\n` +
+                        `- Saathi Rides`;
+
+                    await twilioClient.messages.create({
+                        body: smsBody,
+                        messagingServiceSid:
+                            process.env.TWILIO_MESSAGING_SERVICE_SID,
+                        to: phoneNumber,
+                    });
+                } else {
+                    console.warn(
+                        "Approval SMS skipped: could not normalize mobile for user",
+                        user?._id
+                    );
+                }
+            } catch (smsErr) {
+                console.error("Approval SMS failed (non-fatal):", smsErr);
+            }
+        }
+
         return res.status(200).json({
             status: true,
             data: approvedUser,
@@ -114,41 +182,30 @@ export const updateReferrals = async (req, res) => {
 
 export const removeReferrals = async (req, res) => {
     try {
-        const { id } = req.params
+        const { id } = req.params;
         const approvedUser = await removeService(id);
         res.status(200).json({
             status: true,
-            data: approvedUser
-        })
+            data: approvedUser,
+        });
     } catch (error) {
         res.status(500).json({
             status: false,
-            message: error.message
-        })
+            message: error.message,
+        });
     }
-}
+};
 
 export const sendReferralLink = async (req, res) => {
     try {
-        // console.log(req.body)
         const {
             mobile_number,
             referralCode,
             shareLink,
-            referrerName
+            referrerName,
         } = req.body;
 
-        // if (!mobile_number || !/^\d{10}$/.test(mobile_number)) {
-        //     return res.status(400).json({
-        //         success: false,
-        //         message: "Enter a valid 10-digit mobile number",
-        //     });
-        // }
-
-        const phoneNumber = mobile_number
-
-        // const referralLink = `https://saathirides.net/register?ref=${referralCode}`;
-        const referralLink = shareLink;
+        const phoneNumber = mobile_number;
 
         const message = await twilioClient.messages.create({
             body: `${referrerName} has invited you to join Saathi Rides.
@@ -161,15 +218,11 @@ Join Saathi Rides: ${shareLink}
             to: phoneNumber,
         });
 
-        // console.log("Message SID:", message.sid);
-        // console.log("Initial Status:", message.status);
-
         return res.status(200).json({
             success: true,
             message: "Referral link sent successfully",
             sid: message.sid,
         });
-
     } catch (error) {
         console.error("Twilio SMS Error:", error);
 
