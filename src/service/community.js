@@ -10,7 +10,6 @@ import {
 const isHttpUrl = (value) =>
   typeof value === "string" && /^https?:\/\//i.test(value);
 
-// Sign a populated author's profile image
 const addProfileImageUrl = async (user) => {
   if (!user || typeof user !== "object") return user;
 
@@ -32,7 +31,6 @@ const addProfileImageUrl = async (user) => {
   }
 };
 
-// Sign a post (author + post image) and add postImageUrl
 const addSignedUrls = async (post) => {
   if (!post || typeof post !== "object") return post;
 
@@ -82,12 +80,10 @@ export const deletePostService = async (postId, userId) => {
     throw error;
   }
 
-  // New S3 key
   if (post.postImage && !isHttpUrl(post.postImage)) {
     await deleteS3Object(post.postImage);
   }
 
-  // Legacy Cloudinary object
   if (post.communityImgPublicId) {
     try {
       await cloudinary.uploader.destroy(post.communityImgPublicId);
@@ -97,44 +93,44 @@ export const deletePostService = async (postId, userId) => {
   }
 
   await Community.findByIdAndDelete(postId);
-
   return { message: "Post deleted successfully" };
 };
 
-/* ─── Read: feed ─── */
-export const getPostsService = async (page = 1, limit = 10) => {
+/* ─── Read: feed (rooms + sub-categories) ─── */
+export const getPostsService = async (
+  page = 1,
+  limit = 10,
+  room = "all",
+  subCategory = "all"
+) => {
   const skip = (page - 1) * limit;
 
-  const posts = await Community.find()
-    .populate(
-      "authorId",
-      "firstName lastName referralCode profileImage bio zipcode"
-    )
+  const query = {};
+  if (room && room.toLowerCase() !== "all") query.room = room;
+  // frontend sends "All" (capital A) – compare case-insensitively
+  if (subCategory && subCategory.toLowerCase() !== "all") {
+    query.subCategory = subCategory;
+  }
+
+  const posts = await Community.find(query)
+    .populate("authorId", "firstName lastName profileImage zipcode referredBy")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
     .lean();
 
-  const total = await Community.countDocuments();
+  const total = await Community.countDocuments(query);
 
   const formattedPosts = await Promise.all(
     posts.map(async (post) => {
       const signed = await addSignedUrls(post);
-      return {
-        ...signed,
-        commentCount: post.comments?.length || 0,
-      };
+      return { ...signed, commentCount: post.comments?.length || 0 };
     })
   );
 
   return {
     posts: formattedPosts,
-    pagination: {
-      page,
-      limit,
-      total,
-      hasMore: skip + posts.length < total,
-    },
+    pagination: { page, limit, total, hasMore: skip + posts.length < total },
   };
 };
 
@@ -173,10 +169,11 @@ export const getProfilePostsService = async (authorId, page = 1, limit = 12) => 
 };
 
 /* ─── Edit ─── */
+// updates: { title?, description? }
 export const editPostService = async (
   postId,
   userId,
-  description,
+  updates = {},
   imageKey,
   communityImgPublicId
 ) => {
@@ -193,15 +190,14 @@ export const editPostService = async (
     throw error;
   }
 
-  post.description = description;
+  if (typeof updates.description === "string") post.description = updates.description;
+  if (typeof updates.title === "string") post.title = updates.title;
 
   if (imageKey) {
-    // Delete the previous S3 key (new posts)
     if (post.postImage && !isHttpUrl(post.postImage)) {
       await deleteS3Object(post.postImage);
     }
 
-    // Delete legacy Cloudinary object
     if (post.communityImgPublicId) {
       try {
         await cloudinary.uploader.destroy(post.communityImgPublicId);

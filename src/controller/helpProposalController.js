@@ -123,7 +123,8 @@ export async function respondToHelpProposal(req, res) {
   const traceId = new mongoose.Types.ObjectId().toString();
 
   let claimedRequestId = null;
-  let createdRideId = null;
+  let originalFields = null; // used to undo the update if a later step fails
+
   try {
     if (!requesterId) return sendError(res, 401, "Authentication is required.", "UNAUTHENTICATED");
     if (!mongoose.isValidObjectId(id)) return sendError(res, 400, "Invalid proposal ID.", "INVALID_PROPOSAL_ID");
@@ -140,7 +141,6 @@ export async function respondToHelpProposal(req, res) {
         { new: true }
       );
       if (!updated) return sendError(res, 409, "This proposal was already processed.", "PROPOSAL_RACE");
-      // log("respond:rejected", { traceId, proposalId: String(proposal._id), requestRideId: String(proposal.requestRideId) });
       return res.status(200).json({ success: true, message: "Offer rejected. Your ride request remains open.", data: updated });
     }
 
@@ -153,66 +153,75 @@ export async function respondToHelpProposal(req, res) {
     });
     if (!requestRide) return sendError(res, 409, "The original request is no longer open. Refresh My Rides.", "REQUEST_NOT_OPEN");
 
-    // Atomic claim prevents two proposals from being accepted for the same request.
-    const claimed = await Ride.findOneAndUpdate(
-      { _id: requestRide._id, createdBy: requesterId, kind: "request", status: "OPEN", travelStatus: { $nin: ["Cancelled", "Completed"] } },
-      { $set: { status: "CLOSED" } },
+    const details = publicOfferDetails(proposal.offerDetails, requestRide);
+
+    originalFields = {
+      from: requestRide.from,
+      destination: requestRide.destination,
+      modeOfTravel: requestRide.modeOfTravel,
+      startTime: requestRide.startTime,
+      costPerSeat: requestRide.costPerSeat ?? null,
+    };
+
+    // The request STAYS a request. It just gets a driver and is closed to new offers.
+    // This one atomic update is also the claim that stops two proposals being accepted.
+    const matchedRide = await Ride.findOneAndUpdate(
+      {
+        _id: requestRide._id,
+        createdBy: requesterId,
+        kind: "request",
+        status: "OPEN",
+        travelStatus: { $nin: ["Cancelled", "Completed"] },
+      },
+      {
+        $set: {
+          status: "CLOSED", // keeps it out of Find Rides
+          travelStatus: "Waiting",
+          actualDriver: proposal.helperId,
+          helpProposalId: proposal._id,
+          from: details.from,
+          destination: details.destination,
+          modeOfTravel: details.modeOfTravel,
+          startTime: details.startTime,
+          costPerSeat: details.costPerSeat,
+        },
+      },
       { new: true }
     );
-    if (!claimed) return sendError(res, 409, "Another proposal was accepted first, or this request was closed.", "REQUEST_ALREADY_CLAIMED");
-    claimedRequestId = claimed._id;
-
-    const details = publicOfferDetails(proposal.offerDetails, requestRide);
-    const rideData = requestRide.toObject();
-    delete rideData._id;
-    delete rideData.__v;
-    delete rideData.createdAt;
-    delete rideData.updatedAt;
-    delete rideData.id;
-
-    const finalRide = await Ride.create({
-      ...rideData,
-      ...details,
-      createdBy: requestRide.createdBy, // passenger remains the record owner
-      actualDriver: proposal.helperId, // helper is the actual driver
-      helpProposalId: proposal._id,
-      kind: "offer",
-      status: "OPEN",
-      travelStatus: "Waiting",
-      startTime: details.startTime,
-    });
-    createdRideId = finalRide._id;
+    if (!matchedRide) return sendError(res, 409, "Another proposal was accepted first, or this request was closed.", "REQUEST_ALREADY_CLAIMED");
+    claimedRequestId = matchedRide._id;
 
     const accepted = await HelpProposal.findOneAndUpdate(
       { _id: proposal._id, requesterId, status: "PENDING" },
-      { $set: { status: "ACCEPTED", confirmedRideId: finalRide._id, respondedAt: new Date() } },
+      { $set: { status: "ACCEPTED", confirmedRideId: matchedRide._id, respondedAt: new Date() } },
       { new: true }
     );
     if (!accepted) throw new Error("Proposal status changed while acceptance was being processed.");
 
-    const otherResult = await HelpProposal.updateMany(
+    await HelpProposal.updateMany(
       { requestRideId: requestRide._id, _id: { $ne: proposal._id }, status: "PENDING" },
       { $set: { status: "REJECTED", respondedAt: new Date() } }
     );
 
-    // log("respond:accepted", {
-    //   traceId,
-    //   proposalId: String(proposal._id),
-    //   finalRideId: String(finalRide._id),
-    //   passengerId: String(requestRide.createdBy),
-    //   actualDriverId: String(proposal.helperId),
-    //   otherProposalsRejected: otherResult.modifiedCount,
-    // });
+    const ride = await Ride.findById(matchedRide._id)
+      .populate("createdBy", "firstName lastName profileImage zipcode language")
+      .populate("actualDriver", "firstName lastName profileImage zipcode language")
+      .lean();
+
     return res.status(200).json({
       success: true,
-      message: "Offer accepted. The confirmed ride has been created.",
-      data: { proposal: accepted, ride: finalRide },
+      message: "Offer accepted. Your ride request now has a driver.",
+      data: { proposal: accepted, ride },
     });
   } catch (error) {
     errLog("respond:failed", { traceId, proposalId: id, action, message: error?.message, stack: error?.stack });
-    // Best-effort rollback if anything after claiming the request fails.
-    if (createdRideId) await Ride.findByIdAndDelete(createdRideId).catch((e) => errLog("rollback:deleteRideFailed", e.message));
-    if (claimedRequestId) await Ride.findOneAndUpdate({ _id: claimedRequestId, status: "CLOSED", kind: "request" }, { $set: { status: "OPEN" } }).catch((e) => errLog("rollback:reopenRequestFailed", e.message));
+    // Undo the in-place update if anything after it failed
+    if (claimedRequestId && originalFields) {
+      await Ride.findOneAndUpdate(
+        { _id: claimedRequestId, kind: "request", status: "CLOSED" },
+        { $set: { ...originalFields, status: "OPEN", actualDriver: null, helpProposalId: null } }
+      ).catch((e) => errLog("rollback:reopenRequestFailed", e.message));
+    }
     return sendError(res, 500, error?.message || "Unable to respond to help proposal.", "RESPOND_FAILED");
   }
 }
@@ -221,30 +230,33 @@ export async function updateHelpRideStatus(req, res) {
   const helperId = currentUserId(req);
   const { rideId } = req.params;
   const nextStatus = req.body?.travelStatus;
-  // log("ride-status:start", { rideId, helperId: String(helperId || ""), nextStatus });
   try {
     if (!helperId) return sendError(res, 401, "Authentication is required.", "UNAUTHENTICATED");
     if (!mongoose.isValidObjectId(rideId)) return sendError(res, 400, "Invalid ride ID.", "INVALID_RIDE_ID");
     if (!["Started", "Completed"].includes(nextStatus)) return sendError(res, 400, "travelStatus must be Started or Completed.", "INVALID_TRAVEL_STATUS");
-
-    const ride = await Ride.findOne({ _id: rideId, actualDriver: helperId, helpProposalId: { $ne: null }, kind: "offer" });
+ 
+    // was: kind: "offer" — matched rides now keep kind "request"
+    const ride = await Ride.findOne({ _id: rideId, actualDriver: helperId, helpProposalId: { $ne: null } });
     if (!ride) return sendError(res, 403, "Only the assigned helper can update this accepted help ride.", "NOT_ASSIGNED_HELPER");
+ 
     const allowed = nextStatus === "Started"
       ? ride.travelStatus === "Waiting"
       : ["Started", "Ongoing"].includes(ride.travelStatus);
     if (!allowed) return sendError(res, 409, `Cannot change ride from ${ride.travelStatus} to ${nextStatus}.`, "INVALID_STATUS_TRANSITION");
-
+ 
     const update = { travelStatus: nextStatus };
     if (nextStatus === "Started") update.startedAt = new Date();
     if (nextStatus === "Completed") update.endTime = req.body?.endTime ? new Date(req.body.endTime) : new Date();
+ 
     const updatedRide = await Ride.findOneAndUpdate(
       { _id: ride._id, actualDriver: helperId, travelStatus: ride.travelStatus },
       { $set: update },
       { new: true }
-    ).populate("createdBy", "firstName lastName profileImage zipcode")
-     .populate("actualDriver", "firstName lastName profileImage zipcode");
+    )
+      .populate("createdBy", "firstName lastName profileImage zipcode")
+      .populate("actualDriver", "firstName lastName profileImage zipcode");
     if (!updatedRide) return sendError(res, 409, "Ride status changed concurrently. Refresh and try again.", "STATUS_RACE");
-    // log("ride-status:success", { rideId: String(updatedRide._id), nextStatus, helperId: String(helperId) });
+ 
     return res.status(200).json({ success: true, message: `Ride ${nextStatus.toLowerCase()} successfully.`, data: updatedRide });
   } catch (error) {
     errLog("ride-status:failed", { rideId, message: error?.message, stack: error?.stack });
