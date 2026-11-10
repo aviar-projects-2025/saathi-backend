@@ -1,28 +1,25 @@
-
 import { randomUUID } from "node:crypto";
 import {
   PutObjectCommand,
-  GetObjectCommand
+  GetObjectCommand,
+  DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { s3, S3_BUCKET } from "../../config/s3.js";
 import { getRegistrationSession } from "../../config/registrationSession.js";
 
-const ALLOWED_FOLDERS = new Set([
-  "profiles",
-  "community"
-]);
+const ALLOWED_FOLDERS = new Set(["profiles", "community"]);
 
 const ALLOWED_TYPES = new Set([
   "image/jpeg",
   "image/png",
-  "image/webp"
+  "image/webp",
 ]);
 
 const EXTENSIONS = {
   "image/jpeg": "jpg",
   "image/png": "png",
-  "image/webp": "webp"
+  "image/webp": "webp",
 };
 
 function getAuthenticatedUserId(req) {
@@ -41,36 +38,35 @@ export const createUploadUrl = async (req, res) => {
     if (!userId || userId === "undefined") {
       return res.status(401).json({
         success: false,
-        message: "Authentication required"
+        message: "Authentication required",
       });
     }
 
     if (!ALLOWED_FOLDERS.has(folder)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid folder"
+        message: "Invalid folder",
       });
     }
 
     if (!ALLOWED_TYPES.has(contentType)) {
       return res.status(400).json({
         success: false,
-        message: "Only JPEG, PNG and WebP images are allowed"
+        message: "Only JPEG, PNG and WebP images are allowed",
       });
     }
 
     const key =
-      `${folder}/${userId}/${randomUUID()}.` +
-      EXTENSIONS[contentType];
+      `${folder}/${userId}/${randomUUID()}.` + EXTENSIONS[contentType];
 
     const command = new PutObjectCommand({
       Bucket: S3_BUCKET,
       Key: key,
-      ContentType: contentType
+      ContentType: contentType,
     });
 
     const uploadUrl = await getSignedUrl(s3, command, {
-      expiresIn: 300
+      expiresIn: 300,
     });
 
     return res.json({
@@ -79,15 +75,15 @@ export const createUploadUrl = async (req, res) => {
         key,
         uploadUrl,
         contentType,
-        expiresIn: 300
-      }
+        expiresIn: 300,
+      },
     });
   } catch (error) {
     console.error("Create S3 upload URL failed:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Unable to create upload URL"
+      message: "Unable to create upload URL",
     });
   }
 };
@@ -99,38 +95,32 @@ export const createViewUrl = async (req, res) => {
     if (typeof key !== "string" || !key.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Image key is required"
+        message: "Image key is required",
       });
     }
 
-    // IMPORTANT:
-    // Before enabling this endpoint, authorize access to the image
-    // using your User/Post database records. Authentication alone
-    // is not sufficient to authorize arbitrary private objects.
-
     const command = new GetObjectCommand({
       Bucket: S3_BUCKET,
-      Key: key
+      Key: key,
     });
 
     const viewUrl = await getSignedUrl(s3, command, {
-      expiresIn: 3600
+      expiresIn: 3600,
     });
 
     return res.json({
       success: true,
-      data: { viewUrl, expiresIn: 3600 }
+      data: { viewUrl, expiresIn: 3600 },
     });
   } catch (error) {
     console.error("Create S3 view URL failed:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Unable to create image view URL"
+      message: "Unable to create image view URL",
     });
   }
 };
-
 
 export const createRegistrationUploadUrl = async (req, res) => {
   try {
@@ -162,7 +152,6 @@ export const createRegistrationUploadUrl = async (req, res) => {
       });
     }
 
-    // Keep registration uploads separate from normal user uploads.
     const key =
       `profiles/registration/${registration._id}/` +
       `${randomUUID()}.${EXTENSIONS[contentType]}`;
@@ -177,7 +166,6 @@ export const createRegistrationUploadUrl = async (req, res) => {
       expiresIn: 300,
     });
 
-    // Remember the one permitted profile image key for this session.
     registration.profileImageKey = key;
     await registration.save();
 
@@ -205,6 +193,11 @@ export const getProfileImageSignedUrl = async (key) => {
     return null;
   }
 
+  // Legacy: Cloudinary secure_url from before the S3 migration
+  if (/^https?:\/\//i.test(key)) {
+    return key;
+  }
+
   const command = new GetObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,
@@ -213,4 +206,23 @@ export const getProfileImageSignedUrl = async (key) => {
   return getSignedUrl(s3, command, {
     expiresIn: 3600,
   });
+};
+
+export const deleteS3Object = async (key) => {
+  if (!key || typeof key !== "string") return;
+
+  // Legacy Cloudinary URLs — skip here
+  if (/^https?:\/\//i.test(key)) return;
+
+  try {
+    await s3.send(
+      new DeleteObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key,
+      })
+    );
+  } catch (error) {
+    // Best-effort delete; never throw so post deletion still succeeds
+    console.error("S3 delete failed:", key, error.message);
+  }
 };

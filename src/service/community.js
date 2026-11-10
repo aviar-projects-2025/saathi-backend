@@ -1,14 +1,26 @@
 import cloudinary from "../../config/cloudinary.js";
 import Community from "../model/community.js";
-import { getProfileImageSignedUrl } from "../controller/s3Controller.js"; // <-- ADDED
+import {
+  getProfileImageSignedUrl,
+  deleteS3Object,
+} from "../controller/s3Controller.js";
 
-/* ─── Helper: sign profile images ─── */
+/* ─── Helpers ─── */
+
+const isHttpUrl = (value) =>
+  typeof value === "string" && /^https?:\/\//i.test(value);
+
+// Sign a populated author's profile image
 const addProfileImageUrl = async (user) => {
   if (!user || typeof user !== "object") return user;
-  const userData = typeof user.toObject === "function" ? user.toObject() : { ...user };
+
+  const userData =
+    typeof user.toObject === "function" ? user.toObject() : { ...user };
+
   if (!userData.profileImage) {
     return { ...userData, profileImageUrl: null };
   }
+
   try {
     return {
       ...userData,
@@ -20,10 +32,42 @@ const addProfileImageUrl = async (user) => {
   }
 };
 
+// Sign a post (author + post image) and add postImageUrl
+const addSignedUrls = async (post) => {
+  if (!post || typeof post !== "object") return post;
+
+  const plain =
+    typeof post.toObject === "function" ? post.toObject() : { ...post };
+
+  let author = plain.authorId;
+  if (author && typeof author === "object") {
+    author = await addProfileImageUrl(author);
+  }
+
+  let postImageUrl = null;
+  if (plain.postImage) {
+    try {
+      postImageUrl = await getProfileImageSignedUrl(plain.postImage);
+    } catch (error) {
+      console.error("Failed to sign post image URL:", error.message);
+      postImageUrl = null;
+    }
+  }
+
+  return {
+    ...plain,
+    authorId: author,
+    postImageUrl,
+    postImage: plain.postImage,
+  };
+};
+
+/* ─── Create ─── */
 export const createPostService = async (data) => {
   return await Community.create(data);
 };
 
+/* ─── Delete ─── */
 export const deletePostService = async (postId, userId) => {
   const post = await Community.findById(postId);
   if (!post) {
@@ -38,17 +82,26 @@ export const deletePostService = async (postId, userId) => {
     throw error;
   }
 
-  if (post?.communityImgPublicId) {
-    await cloudinary.uploader.destroy(post?.communityImgPublicId);
+  // New S3 key
+  if (post.postImage && !isHttpUrl(post.postImage)) {
+    await deleteS3Object(post.postImage);
+  }
+
+  // Legacy Cloudinary object
+  if (post.communityImgPublicId) {
+    try {
+      await cloudinary.uploader.destroy(post.communityImgPublicId);
+    } catch (error) {
+      console.error("Cloudinary delete failed:", error.message);
+    }
   }
 
   await Community.findByIdAndDelete(postId);
 
-  return {
-    message: "Post deleted successfully",
-  };
+  return { message: "Post deleted successfully" };
 };
 
+/* ─── Read: feed ─── */
 export const getPostsService = async (page = 1, limit = 10) => {
   const skip = (page - 1) * limit;
 
@@ -64,13 +117,11 @@ export const getPostsService = async (page = 1, limit = 10) => {
 
   const total = await Community.countDocuments();
 
-  // Format posts and sign author images
   const formattedPosts = await Promise.all(
     posts.map(async (post) => {
-      const signedAuthor = await addProfileImageUrl(post.authorId);
+      const signed = await addSignedUrls(post);
       return {
-        ...post,
-        authorId: signedAuthor,
+        ...signed,
         commentCount: post.comments?.length || 0,
       };
     })
@@ -87,11 +138,8 @@ export const getPostsService = async (page = 1, limit = 10) => {
   };
 };
 
-export const getProfilePostsService = async (
-  authorId,
-  page = 1,
-  limit = 12
-) => {
+/* ─── Read: profile feed ─── */
+export const getProfilePostsService = async (authorId, page = 1, limit = 12) => {
   const skip = (page - 1) * limit;
 
   const posts = await Community.find({ authorId })
@@ -102,13 +150,11 @@ export const getProfilePostsService = async (
 
   const total = await Community.countDocuments({ authorId });
 
-  // Format posts and sign author images
   const formattedPosts = await Promise.all(
     posts.map(async (post) => {
-      const signedAuthor = await addProfileImageUrl(post.authorId);
+      const signed = await addSignedUrls(post);
       return {
-        ...post,
-        authorId: signedAuthor,
+        ...signed,
         commentCount: post?.comments?.length || 0,
         description: post?.description,
       };
@@ -126,19 +172,15 @@ export const getProfilePostsService = async (
   };
 };
 
+/* ─── Edit ─── */
 export const editPostService = async (
   postId,
   userId,
   description,
-  imageUrl,
+  imageKey,
   communityImgPublicId
 ) => {
   const post = await Community.findById(postId);
-
-  if (post?.communityImgPublicId) {
-    await cloudinary.uploader.destroy(post?.communityImgPublicId);
-  }
-
   if (!post) {
     const error = new Error("Post not found");
     error.statusCode = 404;
@@ -153,13 +195,29 @@ export const editPostService = async (
 
   post.description = description;
 
-  // Only update image if a new one was uploaded
-  if (imageUrl) {
-    post.postImage = imageUrl;
-    post.communityImgPublicId = communityImgPublicId;
+  if (imageKey) {
+    // Delete the previous S3 key (new posts)
+    if (post.postImage && !isHttpUrl(post.postImage)) {
+      await deleteS3Object(post.postImage);
+    }
+
+    // Delete legacy Cloudinary object
+    if (post.communityImgPublicId) {
+      try {
+        await cloudinary.uploader.destroy(post.communityImgPublicId);
+      } catch (error) {
+        console.error("Cloudinary delete failed:", error.message);
+      }
+      post.communityImgPublicId = undefined;
+    }
+
+    post.postImage = imageKey;
+
+    if (communityImgPublicId) {
+      post.communityImgPublicId = communityImgPublicId;
+    }
   }
 
   await post.save();
-
   return post;
 };
