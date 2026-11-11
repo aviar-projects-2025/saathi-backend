@@ -593,6 +593,7 @@ export const getTopRiders = async (req, res) => {
     const limit = Number(req.query.limit) || 5;
 
     const riders = await getTopRidersService(limit);
+    console.log(riders,'riders')
     res.status(200).json({
       success: true,
       data: riders,
