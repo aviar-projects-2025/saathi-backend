@@ -1,6 +1,9 @@
 import mongoose from "mongoose";
 import HelpProposal from "../model/helpProposal.js";
 import Ride from "../model/ride.js";
+import User from "../model/user.js";
+import { emitNotification } from "../../socket.js";
+import { buildNotification, createNotificationService } from "../service/notification.js";
 
 const log = (...args) => console.log("[I_CAN_HELP][API]", ...args);
 const warn = (...args) => console.warn("[I_CAN_HELP][API]", ...args);
@@ -52,7 +55,6 @@ export async function createHelpProposal(req, res) {
   const traceId = new mongoose.Types.ObjectId().toString();
   const helperId = currentUserId(req);
   const { requestRideId, offerDetails } = req.body || {};
-  // log("create:start", { traceId, helperId: String(helperId || ""), requestRideId });
 
   try {
     if (!helperId) return sendError(res, 401, "Authentication is required.", "UNAUTHENTICATED");
@@ -86,10 +88,53 @@ export async function createHelpProposal(req, res) {
       status: "PENDING",
     });
 
+    // ─── NOTIFICATION LOGIC ───
+    try {
+      // 1. Fetch the helper's details for the notification message
+      const helperUser = await User.findById(helperId).select("firstName lastName");
+
+      // 2. Build the notification
+      const notif = buildNotification({
+        type: "help_proposal_received",
+        actorName: helperUser?.firstName || "Someone",
+      });
+
+      // 3. Save the notification to the database
+      const notification = await createNotificationService({
+        userId: requestRide.createdBy,
+        actorId: helperId,
+        type: "help_proposal_received",
+        category: "New Offer",
+        ...notif,
+        data: {
+          rideId: requestRide._id,
+          proposalId: proposal._id,
+          helperId: helperId,
+        },
+      });
+
+      // 4. Emit real-time socket notification to the requester
+      emitNotification(requestRide.createdBy.toString(), {
+        _id: notification._id,
+        type: "help_proposal_received",
+        message: notif.message,
+        category: "New Offer",
+        data: {
+          rideId: requestRide._id,
+          proposalId: proposal._id,
+          helperId: helperId,
+        },
+      });
+    } catch (notifError) {
+      console.error("[I_CAN_HELP][API] Notification failed, but proposal was created:", notifError);
+      // We catch the error so that if notifications fail, the proposal still succeeds
+    }
+    // ───────────────────────────
+
     const result = await HelpProposal.findById(proposal._id)
       .populate("helperId", "firstName lastName profileImage zipcode")
       .populate("requestRideId");
-    // log("create:success", { traceId, proposalId: String(proposal._id), requestRideId: String(requestRide._id), helperId: String(helperId) });
+      
     return res.status(201).json({ success: true, message: "Your offer to help was sent.", data: result });
   } catch (error) {
     errLog("create:failed", { traceId, message: error?.message, stack: error?.stack });
@@ -99,8 +144,6 @@ export async function createHelpProposal(req, res) {
 
 export async function getReceivedHelpProposals(req, res) {
   const requesterId = currentUserId(req);
-  // console.log(requesterId,'requesterId')
-  // log("received:start", { requesterId: String(requesterId || "") });
   try {
     if (!requesterId) return sendError(res, 401, "Authentication is required.", "UNAUTHENTICATED");
     const proposals = await HelpProposal.find({ requesterId })
@@ -108,7 +151,6 @@ export async function getReceivedHelpProposals(req, res) {
       .populate("requestRideId")
       .sort({ createdAt: -1 })
       .lean();
-    // log("received:success", { requesterId: String(requesterId), count: proposals.length, pending: proposals.filter(p => p.status === "PENDING").length });
     return res.status(200).json({ success: true, data: proposals, count: proposals.length });
   } catch (error) {
     errLog("received:failed", { requesterId: String(requesterId || ""), message: error?.message, stack: error?.stack });
@@ -123,7 +165,7 @@ export async function respondToHelpProposal(req, res) {
   const traceId = new mongoose.Types.ObjectId().toString();
 
   let claimedRequestId = null;
-  let originalFields = null; // used to undo the update if a later step fails
+  let originalFields = null;
 
   try {
     if (!requesterId) return sendError(res, 401, "Authentication is required.", "UNAUTHENTICATED");
@@ -163,8 +205,6 @@ export async function respondToHelpProposal(req, res) {
       costPerSeat: requestRide.costPerSeat ?? null,
     };
 
-    // The request STAYS a request. It just gets a driver and is closed to new offers.
-    // This one atomic update is also the claim that stops two proposals being accepted.
     const matchedRide = await Ride.findOneAndUpdate(
       {
         _id: requestRide._id,
@@ -175,7 +215,7 @@ export async function respondToHelpProposal(req, res) {
       },
       {
         $set: {
-          status: "CLOSED", // keeps it out of Find Rides
+          status: "CLOSED",
           travelStatus: "Waiting",
           actualDriver: proposal.helperId,
           helpProposalId: proposal._id,
@@ -215,7 +255,6 @@ export async function respondToHelpProposal(req, res) {
     });
   } catch (error) {
     errLog("respond:failed", { traceId, proposalId: id, action, message: error?.message, stack: error?.stack });
-    // Undo the in-place update if anything after it failed
     if (claimedRequestId && originalFields) {
       await Ride.findOneAndUpdate(
         { _id: claimedRequestId, kind: "request", status: "CLOSED" },
@@ -235,7 +274,6 @@ export async function updateHelpRideStatus(req, res) {
     if (!mongoose.isValidObjectId(rideId)) return sendError(res, 400, "Invalid ride ID.", "INVALID_RIDE_ID");
     if (!["Started", "Completed"].includes(nextStatus)) return sendError(res, 400, "travelStatus must be Started or Completed.", "INVALID_TRAVEL_STATUS");
  
-    // was: kind: "offer" — matched rides now keep kind "request"
     const ride = await Ride.findOne({ _id: rideId, actualDriver: helperId, helpProposalId: { $ne: null } });
     if (!ride) return sendError(res, 403, "Only the assigned helper can update this accepted help ride.", "NOT_ASSIGNED_HELPER");
  
@@ -266,7 +304,6 @@ export async function updateHelpRideStatus(req, res) {
 
 export async function getSentHelpProposals(req, res) {
   const helperId = currentUserId(req);
-  // log("sent:start", { helperId: String(helperId || "") });
   try {
     if (!helperId) return sendError(res, 401, "Authentication is required.", "UNAUTHENTICATED");
 
@@ -276,7 +313,6 @@ export async function getSentHelpProposals(req, res) {
       .sort({ createdAt: -1 })
       .lean();
 
-    // log("sent:success", { helperId: String(helperId), count: proposals.length });
     return res.status(200).json({ success: true, data: proposals });
   } catch (error) {
     errLog("sent:failed", { helperId: String(helperId || ""), message: error?.message, stack: error?.stack });
