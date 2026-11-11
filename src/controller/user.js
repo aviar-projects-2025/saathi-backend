@@ -383,7 +383,7 @@ export const loginUser = async (req, res) => {
 
 export const getPeopleNearby = async (req, res) => {
   try {
-    const { id: currentUserId } = req.params
+    const { id: currentUserId } = req.params;
 
     // Get logged-in user's ZIP/PIN code
     const currentUser = await User.findById(currentUserId).select("zipcode");
@@ -410,13 +410,29 @@ export const getPeopleNearby = async (req, res) => {
       .select(
         "_id firstName lastName profileImage profession bio city state isVerified"
       )
-      .sort({ firstName: 1 });
+      .sort({ firstName: 1 })
+      .lean(); // ★ Add .lean() for performance and easier modification
+
+    // ★ NEW: Sign profile images for all nearby people
+    const peopleWithSignedUrls = await Promise.all(
+      people.map(async (person) => {
+        let profileImageUrl = null;
+        if (person.profileImage) {
+          try {
+            profileImageUrl = await getProfileImageSignedUrl(person.profileImage);
+          } catch (err) {
+            console.error("Failed to sign nearby user image:", err.message);
+          }
+        }
+        return { ...person, profileImageUrl };
+      })
+    );
 
     return res.status(200).json({
       success: true,
       zipcode: currentUser.zipcode,
-      count: people.length,
-      data: people,
+      count: peopleWithSignedUrls.length,
+      data: peopleWithSignedUrls,
     });
   } catch (error) {
     console.error("Error fetching people nearby:", error);
