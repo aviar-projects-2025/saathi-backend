@@ -4,6 +4,7 @@ import Ride from "../model/ride.js";
 import User from "../model/user.js";
 import { emitNotification } from "../../socket.js";
 import { buildNotification, createNotificationService } from "../service/notification.js";
+import { getProfileImageSignedUrl } from "./s3Controller.js";
 
 const log = (...args) => console.log("[I_CAN_HELP][API]", ...args);
 const warn = (...args) => console.warn("[I_CAN_HELP][API]", ...args);
@@ -18,6 +19,29 @@ function asId(value) {
 function sendError(res, status, message, code = "HELP_PROPOSAL_ERROR") {
   return res.status(status).json({ success: false, message, error: { code, message } });
 }
+
+/* ─── NEW HELPER: Attach signed profile URL ─── */
+const signUserProfile = async (user) => {
+  if (!user || typeof user !== "object") return user;
+  
+  const userData = typeof user.toObject === "function" ? user.toObject() : { ...user };
+  
+  if (!userData.profileImage) {
+    return { ...userData, profileImageUrl: null };
+  }
+  
+  try {
+    return {
+      ...userData,
+      profileImageUrl: await getProfileImageSignedUrl(userData.profileImage),
+    };
+  } catch (error) {
+    console.error("Failed to sign profile image URL:", error.message);
+    return { ...userData, profileImageUrl: null };
+  }
+};
+/* ───────────────────────────────────────────── */
+
 function publicOfferDetails(input, requestRide) {
   const source = input && typeof input === "object" ? input : {};
   const from = String(source.from ?? requestRide.from ?? "").trim();
@@ -90,16 +114,12 @@ export async function createHelpProposal(req, res) {
 
     // ─── NOTIFICATION LOGIC ───
     try {
-      // 1. Fetch the helper's details for the notification message
       const helperUser = await User.findById(helperId).select("firstName lastName");
-
-      // 2. Build the notification
       const notif = buildNotification({
         type: "help_proposal_received",
         actorName: helperUser?.firstName || "Someone",
       });
 
-      // 3. Save the notification to the database
       const notification = await createNotificationService({
         userId: requestRide.createdBy,
         actorId: helperId,
@@ -113,7 +133,6 @@ export async function createHelpProposal(req, res) {
         },
       });
 
-      // 4. Emit real-time socket notification to the requester
       emitNotification(requestRide.createdBy.toString(), {
         _id: notification._id,
         type: "help_proposal_received",
@@ -127,13 +146,17 @@ export async function createHelpProposal(req, res) {
       });
     } catch (notifError) {
       console.error("[I_CAN_HELP][API] Notification failed, but proposal was created:", notifError);
-      // We catch the error so that if notifications fail, the proposal still succeeds
     }
     // ───────────────────────────
 
     const result = await HelpProposal.findById(proposal._id)
       .populate("helperId", "firstName lastName profileImage zipcode")
-      .populate("requestRideId");
+      .populate("requestRideId")
+      .lean();
+      
+    if (result && result.helperId) {
+      result.helperId = await signUserProfile(result.helperId);
+    }
       
     return res.status(201).json({ success: true, message: "Your offer to help was sent.", data: result });
   } catch (error) {
@@ -151,7 +174,17 @@ export async function getReceivedHelpProposals(req, res) {
       .populate("requestRideId")
       .sort({ createdAt: -1 })
       .lean();
-    return res.status(200).json({ success: true, data: proposals, count: proposals.length });
+
+    const signedProposals = await Promise.all(
+      proposals.map(async (proposal) => {
+        if (proposal.helperId) {
+          proposal.helperId = await signUserProfile(proposal.helperId);
+        }
+        return proposal;
+      })
+    );
+
+    return res.status(200).json({ success: true, data: signedProposals, count: signedProposals.length });
   } catch (error) {
     errLog("received:failed", { requesterId: String(requesterId || ""), message: error?.message, stack: error?.stack });
     return sendError(res, 500, "Unable to fetch help proposals.", "FETCH_FAILED");
@@ -183,6 +216,28 @@ export async function respondToHelpProposal(req, res) {
         { new: true }
       );
       if (!updated) return sendError(res, 409, "This proposal was already processed.", "PROPOSAL_RACE");
+      
+      // ─── NOTIFICATION LOGIC (REJECT) ───
+      try {
+        const notif = buildNotification({ type: "help_proposal_rejected" });
+        const notification = await createNotificationService({
+          userId: proposal.helperId,
+          actorId: requesterId,
+          type: "help_proposal_rejected",
+          ...notif,
+          data: { rideId: proposal.requestRideId, proposalId: proposal._id },
+        });
+        emitNotification(proposal.helperId.toString(), {
+          _id: notification._id,
+          type: "help_proposal_rejected",
+          message: notif.message,
+          data: { rideId: proposal.requestRideId, proposalId: proposal._id },
+        });
+      } catch (err) {
+        console.error("[I_CAN_HELP][API] Reject notification failed:", err);
+      }
+      // ───────────────────────────────
+
       return res.status(200).json({ success: true, message: "Offer rejected. Your ride request remains open.", data: updated });
     }
 
@@ -238,10 +293,60 @@ export async function respondToHelpProposal(req, res) {
     );
     if (!accepted) throw new Error("Proposal status changed while acceptance was being processed.");
 
+    // Find other proposals that will be rejected so we can notify them
+    const otherProposals = await HelpProposal.find({
+      requestRideId: requestRide._id,
+      _id: { $ne: proposal._id },
+      status: "PENDING",
+    });
+
     await HelpProposal.updateMany(
       { requestRideId: requestRide._id, _id: { $ne: proposal._id }, status: "PENDING" },
       { $set: { status: "REJECTED", respondedAt: new Date() } }
     );
+
+    // ─── NOTIFICATION LOGIC (ACCEPT & AUTO-REJECT) ───
+    try {
+      // 1. Notify the accepted helper
+      const acceptNotif = buildNotification({ type: "help_proposal_accepted" });
+      const acceptNotification = await createNotificationService({
+        userId: proposal.helperId,
+        actorId: requesterId,
+        type: "help_proposal_accepted",
+        ...acceptNotif,
+        data: { rideId: matchedRide._id, proposalId: proposal._id },
+      });
+
+      console.log(acceptNotification,'acceptNotification')
+      
+      emitNotification(proposal.helperId.toString(), {
+        _id: acceptNotification._id,
+        type: "help_proposal_accepted",
+        message: acceptNotif.message,
+        data: { rideId: matchedRide._id, proposalId: proposal._id },
+      });
+
+      // 2. Notify the auto-rejected helpers
+      const rejectNotif = buildNotification({ type: "help_proposal_rejected" });
+      for (const other of otherProposals) {
+        const notif = await createNotificationService({
+          userId: other.helperId,
+          actorId: requesterId,
+          type: "help_proposal_rejected",
+          ...rejectNotif,
+          data: { rideId: matchedRide._id, proposalId: other._id },
+        });
+        emitNotification(other.helperId.toString(), {
+          _id: notif._id,
+          type: "help_proposal_rejected",
+          message: rejectNotif.message,
+          data: { rideId: matchedRide._id, proposalId: other._id },
+        });
+      }
+    } catch (err) {
+      console.error("[I_CAN_HELP][API] Accept/Reject notifications failed:", err);
+    }
+    // ────────────────────────────────────────────────
 
     const ride = await Ride.findById(matchedRide._id)
       .populate("createdBy", "firstName lastName profileImage zipcode language")
@@ -313,7 +418,16 @@ export async function getSentHelpProposals(req, res) {
       .sort({ createdAt: -1 })
       .lean();
 
-    return res.status(200).json({ success: true, data: proposals });
+    const signedProposals = await Promise.all(
+      proposals.map(async (proposal) => {
+        if (proposal.requesterId) {
+          proposal.requesterId = await signUserProfile(proposal.requesterId);
+        }
+        return proposal;
+      })
+    );
+
+    return res.status(200).json({ success: true, data: signedProposals });
   } catch (error) {
     errLog("sent:failed", { helperId: String(helperId || ""), message: error?.message, stack: error?.stack });
     return sendError(res, 500, "Unable to fetch sent proposals.", "FETCH_FAILED");

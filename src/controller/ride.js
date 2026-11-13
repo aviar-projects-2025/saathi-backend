@@ -251,7 +251,7 @@ export const cancelRide = async (req, res) => {
                     destination: updatedRide.destination,
                 },
             });
-
+            console.log(notifictioncreated,'notifictioncreated')
             emitNotification(Req.requestedBy, {
                 type: "ride_cancelled",
                 message: `Your ride cancelled`,

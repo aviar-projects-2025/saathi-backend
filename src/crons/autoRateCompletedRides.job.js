@@ -12,7 +12,7 @@ const RUN_EVERY_MS = 60 * 60 * 1000; // 1 hour
 const SYSTEM_USER_ID = null; // auto-ratings have no "reviewer" — see note below
 
 async function autoRateCompletedRides() {
-  console.log("[AUTO_RATE] start");
+  // console.log("[AUTO_RATE] start");
 
   try {
     const cutoff = new Date(Date.now() - THREE_DAYS_MS);
@@ -103,7 +103,7 @@ async function autoRateCompletedRides() {
       }
     }
 
-    console.log(`[AUTO_RATE] done: created=${autoCreated}, skipped=${skipped}, ridesProcessed=${rides.length}`);
+    // console.log(`[AUTO_RATE] done: created=${autoCreated}, skipped=${skipped}, ridesProcessed=${rides.length}`);
   } catch (err) {
     console.error("[AUTO_RATE] failed:", err);
   }
@@ -113,5 +113,5 @@ export function startAutoRateJob() {
   // Run once at startup, then hourly
   autoRateCompletedRides();
   setInterval(autoRateCompletedRides, RUN_EVERY_MS);
-  console.log("[AUTO_RATE] job scheduled (every 1h)");
+  // console.log("[AUTO_RATE] job scheduled (every 1h)");
 }

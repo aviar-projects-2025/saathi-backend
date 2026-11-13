@@ -192,6 +192,7 @@ export const editPostService = async (
 
   if (typeof updates.description === "string") post.description = updates.description;
   if (typeof updates.title === "string") post.title = updates.title;
+  if (typeof updates.when === "string") post.timeframe = updates.when
 
   if (imageKey) {
     if (post.postImage && !isHttpUrl(post.postImage)) {

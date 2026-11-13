@@ -5,7 +5,7 @@ import { registerChatSocket } from "./src/chat/chat.socket.js";
 let io;
 
 export const initSocket = (server) => {
-    console.log("🚀 [SOCKET SERVER] Initializing Socket.io...");
+    // console.log("🚀 [SOCKET SERVER] Initializing Socket.io...");
 
     io = new Server(server, {
         cors: {
@@ -29,7 +29,7 @@ export const initSocket = (server) => {
             const token = socket.handshake.auth?.token;
 
             if (!token) {
-                console.log("❌ [SOCKET] auth: no token provided");
+                // console.log("❌ [SOCKET] auth: no token provided");
                 return next(new Error("No token provided"));
             }
 
@@ -44,7 +44,7 @@ export const initSocket = (server) => {
             }
 
             socket.userId = String(resolvedUserId);
-            console.log("✅ [SOCKET] auth OK | userId:", socket.userId);
+            // console.log("✅ [SOCKET] auth OK | userId:", socket.userId);
             next();
         } catch (error) {
             console.log("❌ [SOCKET] auth FAILED:", error.message);
@@ -54,25 +54,25 @@ export const initSocket = (server) => {
 
     /* ─── Connection handler ─── */
     io.on("connection", (socket) => {
-        console.log(
-            "✅ [SOCKET] CONNECTED | socketId:",
-            socket.id,
-            "| userId:",
-            socket.userId
-        );
+        // console.log(
+        //     "✅ [SOCKET] CONNECTED | socketId:",
+        //     socket.id,
+        //     "| userId:",
+        //     socket.userId
+        // );
 
         socket.join(socket.userId);
-        console.log("✅ [SOCKET] JOINED ROOM:", socket.userId);
+        // console.log("✅ [SOCKET] JOINED ROOM:", socket.userId);
 
         registerChatSocket(io, socket);
 
         socket.on("disconnect", (reason) => {
-            console.log(
-                "❌ [SOCKET] DISCONNECTED | socketId:",
-                socket.id,
-                "| reason:",
-                reason
-            );
+            // console.log(
+            //     "❌ [SOCKET] DISCONNECTED | socketId:",
+            //     socket.id,
+            //     "| reason:",
+            //     reason
+            // );
         });
 
         socket.on("error", (err) => {
@@ -80,7 +80,7 @@ export const initSocket = (server) => {
         });
     });
 
-    console.log("🚀 [SOCKET SERVER] Ready. CORS origins: localhost:5173/5174/3000 + production");
+    // console.log("🚀 [SOCKET SERVER] Ready. CORS origins: localhost:5173/5174/3000 + production");
     return io;
 };
 
@@ -97,14 +97,14 @@ export const emitNotification = (userId, payload) => {
         console.log("❌ [EMIT] Cannot emit — io not initialized");
         return;
     }
-    console.log(
-        "📤 [EMIT] → userId:",
-        String(userId),
-        "| type:",
-        payload?.type,
-        "| rooms count:",
-        io.sockets?.adapter?.rooms?.get(String(userId))?.size || 0
-    );
+    // console.log(
+    //     "📤 [EMIT] → userId:",
+    //     String(userId),
+    //     "| type:",
+    //     payload?.type,
+    //     "| rooms count:",
+    //     io.sockets?.adapter?.rooms?.get(String(userId))?.size || 0
+    // );
     io.to(String(userId)).emit("notification", payload);
 };
 

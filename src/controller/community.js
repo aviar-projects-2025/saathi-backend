@@ -44,7 +44,7 @@ const withSignedPostImage = async (post) => {
 export const editPost = async (req, res) => {
   try {
     const { postId } = req.params;
-    const { userId, description, title } = req.body;
+    const { userId, description, title, when } = req.body;
 
     let imageKey = req.body.postImage || "";
     let communityImgPublicId = "";
@@ -58,7 +58,7 @@ export const editPost = async (req, res) => {
     const post = await editPostService(
       postId,
       userId,
-      { description, title },
+      { description, title, when },
       imageKey,
       communityImgPublicId
     );
