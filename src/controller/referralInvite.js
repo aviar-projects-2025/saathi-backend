@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import twilioClient from "../../config/twilio.js";
-import Referral from "../model/referral.js"
+import Referral from "../model/referral.js";
 import ReferralInvitation from "../model/ReferralInvitation.js";
-import User from "../model/user.js"
+import User from "../model/user.js";
 import { randomBytes, createHash } from "node:crypto";
+// ★ ADDED: Import the S3 signing helper
+import { getProfileImageSignedUrl } from "./s3Controller.js";
 
 const FRONTEND_URLS = {
   development: "https://saathi-frontend-sl8k.vercel.app",
@@ -160,10 +162,22 @@ export const validateReferralInvitation = async (req, res) => {
     }
 
     /* ── 1. Try permanent user token (LINK channel) ── */
+    // ★ Added profileImage to select
     const userByToken = await User.findOne({ inviteToken: token }).select(
-      "firstName lastName referralCode createdAt city"
+      "firstName lastName referralCode createdAt city profileImage"
     );
+    
     if (userByToken) {
+      // ★ Sign the image URL
+      let profileImageUrl = null;
+      if (userByToken.profileImage) {
+        try {
+          profileImageUrl = await getProfileImageSignedUrl(userByToken.profileImage);
+        } catch (err) {
+          console.error("Failed to sign referrer profile image:", err.message);
+        }
+      }
+
       return res.status(200).json({
         success: true,
         invitation: {
@@ -171,6 +185,7 @@ export const validateReferralInvitation = async (req, res) => {
           referralCode: userByToken.referralCode,
           city : userByToken.city,
           createdAt : userByToken.createdAt,
+          profileImageUrl: profileImageUrl, // ★ Added to response
         },
       });
     }
@@ -190,8 +205,9 @@ export const validateReferralInvitation = async (req, res) => {
       });
     }
 
+    // ★ Added profileImage to select
     const referrer = await User.findById(invitation.referrerId).select(
-      "firstName lastName referralCode"
+      "firstName lastName referralCode profileImage"
     );
 
     if (!referrer) {
@@ -201,11 +217,22 @@ export const validateReferralInvitation = async (req, res) => {
       });
     }
 
+    // ★ Sign the image URL
+    let profileImageUrl = null;
+    if (referrer.profileImage) {
+      try {
+        profileImageUrl = await getProfileImageSignedUrl(referrer.profileImage);
+      } catch (err) {
+        console.error("Failed to sign referrer profile image:", err.message);
+      }
+    }
+
     return res.status(200).json({
       success: true,
       invitation: {
         referrerName: `${referrer.firstName} ${referrer.lastName}`.trim(),
         referralCode: referrer.referralCode,
+        profileImageUrl: profileImageUrl, // ★ Added to response
       },
     });
   } catch (error) {
