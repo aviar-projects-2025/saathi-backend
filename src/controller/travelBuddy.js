@@ -4,9 +4,33 @@ import mongoose from "mongoose";
 import TravelBuddyRequest from "../model/travelBuddyRequest.js";
 import { createNotificationService } from "../service/notification.js";
 import { emitNotification } from "../../socket.js";
+import { getProfileImageSignedUrl } from "./s3Controller.js";
 
 const getUserId = (req) =>
   req.user?._id || req.user?.id || req.user?.userId || req.userId;
+
+/* ───────────────────────────────────────────────────────
+   Helper: attach a signed `profileImageUrl` to a user object.
+   - Works on lean() plain objects and hydrated docs.
+   - Keeps the raw `profileImage` key too (some clients rely on it).
+   - Never throws; falls back to `profileImageUrl: null`.
+   ─────────────────────────────────────────────────────── */
+const attachProfileImageUrl = async (user) => {
+  if (!user || typeof user !== "object") return user;
+  const data = typeof user.toObject === "function" ? user.toObject() : { ...user };
+  if (!data.profileImage) {
+    return { ...data, profileImageUrl: null };
+  }
+  try {
+    return {
+      ...data,
+      profileImageUrl: await getProfileImageSignedUrl(data.profileImage),
+    };
+  } catch (err) {
+    console.error("[travelBuddy] Failed to sign profile image:", err.message);
+    return { ...data, profileImageUrl: null };
+  }
+};
 
 /* ───────────────────────────────────────────────────────
    Helper: auto-complete trips whose last arrival has passed
@@ -63,7 +87,7 @@ export const createTrip = async (req, res) => {
 };
 
 /* ───────────────────────────────────────────────────────
-   My Trips — ★ includes matched trips via accepted requests
+   My Trips
    ─────────────────────────────────────────────────────── */
 export const getMyTrips = async (req, res) => {
   try {
@@ -72,14 +96,20 @@ export const getMyTrips = async (req, res) => {
 
     await autoCompleteExpiredTrips(userId);
 
-    // ★ Only return trips created by this user. 
-    // The other person's trip details are fetched via the /accepted/:id endpoint.
     const trips = await TravelBuddy.find({ createdBy: userId })
       .populate("createdBy", "firstName lastName profileImage")
       .sort({ createdAt: -1 })
       .lean();
 
-    return res.status(200).json({ success: true, data: trips });
+    // ★ Attach signed profile image URL on `createdBy`
+    const tripsWithUrls = await Promise.all(
+      trips.map(async (trip) => ({
+        ...trip,
+        createdBy: await attachProfileImageUrl(trip.createdBy),
+      }))
+    );
+
+    return res.status(200).json({ success: true, data: tripsWithUrls });
   } catch (error) {
     console.error("getMyTrips Error:", error);
     return res.status(500).json({ success: false, message: error.message });
@@ -260,7 +290,15 @@ export const getAllTrips = async (req, res) => {
       });
     }
 
-    return res.status(200).json({ success: true, data: trips });
+    // ★ Attach signed profile image URL on `createdBy`
+    const tripsWithUrls = await Promise.all(
+      trips.map(async (trip) => ({
+        ...trip,
+        createdBy: await attachProfileImageUrl(trip.createdBy),
+      }))
+    );
+
+    return res.status(200).json({ success: true, data: tripsWithUrls });
   } catch (error) {
     console.error("getAllTrips Error:", error);
     return res.status(500).json({ success: false, message: error.message });
@@ -314,7 +352,6 @@ export const createTravelBuddyRequest = async (req, res) => {
     const existing = await TravelBuddyRequest.findOne({ targetTripId: targetTrip._id, requesterId: userId, status: "PENDING" });
     if (existing) return res.status(409).json({ success: false, message: "You already have a pending request for this trip.", data: existing });
 
-    // ★ Only allow the fields we need; disable client override of critical fields
     const safe = {
       role: tripPayload.role,
       flights: tripPayload.flights,
@@ -384,7 +421,16 @@ export const getReceivedTravelBuddyRequests = async (req, res) => {
       .populate("submittedTripId")
       .sort({ createdAt: -1 })
       .lean();
-    return res.status(200).json({ success: true, data: requests });
+
+    // ★ Attach signed profile image URL on `requesterId`
+    const requestsWithUrls = await Promise.all(
+      requests.map(async (reqDoc) => ({
+        ...reqDoc,
+        requesterId: await attachProfileImageUrl(reqDoc.requesterId),
+      }))
+    );
+
+    return res.status(200).json({ success: true, data: requestsWithUrls });
   } catch (error) {
     console.error("getReceivedTravelBuddyRequests Error:", error);
     return res.status(500).json({ success: false, message: "Unable to fetch received requests." });
@@ -401,7 +447,16 @@ export const getSentTravelBuddyRequests = async (req, res) => {
       .populate("submittedTripId")
       .sort({ createdAt: -1 })
       .lean();
-    return res.status(200).json({ success: true, data: requests });
+
+    // ★ Attach signed profile image URL on `recipientId`
+    const requestsWithUrls = await Promise.all(
+      requests.map(async (reqDoc) => ({
+        ...reqDoc,
+        recipientId: await attachProfileImageUrl(reqDoc.recipientId),
+      }))
+    );
+
+    return res.status(200).json({ success: true, data: requestsWithUrls });
   } catch (error) {
     console.error("getSentTravelBuddyRequests Error:", error);
     return res.status(500).json({ success: false, message: "Unable to fetch sent requests." });
@@ -526,17 +581,24 @@ export const getTravelBuddyRequestContact = async (req, res) => {
     if (!request) return res.status(403).json({ success: false, message: "Contact details are available only after both members consent and the request is approved." });
 
     const otherUserId = String(request.requesterId) === String(userId) ? request.recipientId : request.requesterId;
-    const contact = await User.findById(otherUserId).select("firstName lastName profileImage mobile messageNumber isMessageApproved").lean();
+    const contact = await User.findById(otherUserId)
+      .select("firstName lastName profileImage mobile messageNumber isMessageApproved")
+      .lean();
     if (!contact) return res.status(404).json({ success: false, message: "Member not found." });
+
+    // ★ Attach signed profile image URL
+    const contactWithUrl = await attachProfileImageUrl(contact);
 
     return res.status(200).json({
       success: true,
       data: {
-        firstName: contact.firstName, lastName: contact.lastName,
-        profileImage: contact.profileImage,
-        mobile: contact.isMessageApproved ? contact.mobile : null,
-        messageNumber: contact.isMessageApproved ? contact.messageNumber : null,
-        isMessageApproved: Boolean(contact.isMessageApproved),
+        firstName: contactWithUrl.firstName,
+        lastName: contactWithUrl.lastName,
+        profileImage: contactWithUrl.profileImage,
+        profileImageUrl: contactWithUrl.profileImageUrl,   // ★ NEW
+        mobile: contactWithUrl.isMessageApproved ? contactWithUrl.mobile : null,
+        messageNumber: contactWithUrl.isMessageApproved ? contactWithUrl.messageNumber : null,
+        isMessageApproved: Boolean(contactWithUrl.isMessageApproved),
       },
     });
   } catch (error) {
@@ -582,7 +644,15 @@ export const getAcceptedTripDetails = async (req, res) => {
     if (!targetTrip || !submittedTrip) return res.status(404).json({ success: false, message: "Matched trip details could not be found." });
 
     const otherUserId = String(request.requesterId) === String(userId) ? request.recipientId : request.requesterId;
-    const otherTraveller = await User.findById(otherUserId).select("name fullName firstName lastName phone mobile email").lean();
+    // ★ Added `profileImage` to the select so we can sign it
+    const otherTraveller = await User.findById(otherUserId)
+      .select("name fullName firstName lastName phone mobile email profileImage")
+      .lean();
+
+    // ★ Attach signed profile image URL to the traveller
+    const otherTravellerWithUrl = otherTraveller
+      ? await attachProfileImageUrl(otherTraveller)
+      : null;
 
     return res.status(200).json({
       success: true,
@@ -590,10 +660,12 @@ export const getAcceptedTripDetails = async (req, res) => {
         requestId: String(request._id),
         targetTrip,
         submittedTrip,
-        otherTraveller: otherTraveller ? {
-          name: otherTraveller.name || otherTraveller.fullName || [otherTraveller.firstName, otherTraveller.lastName].filter(Boolean).join(" ") || "Travel Buddy",
-          phone: otherTraveller.phone || otherTraveller.mobile || "",
-          email: otherTraveller.email || "",
+        otherTraveller: otherTravellerWithUrl ? {
+          name: otherTravellerWithUrl.name || otherTravellerWithUrl.fullName || [otherTravellerWithUrl.firstName, otherTravellerWithUrl.lastName].filter(Boolean).join(" ") || "Travel Buddy",
+          phone: otherTravellerWithUrl.phone || otherTravellerWithUrl.mobile || "",
+          email: otherTravellerWithUrl.email || "",
+          profileImage: otherTravellerWithUrl.profileImage || null,
+          profileImageUrl: otherTravellerWithUrl.profileImageUrl || null,   // ★ NEW
         } : null,
       },
     });
