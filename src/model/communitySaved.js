@@ -1,18 +1,26 @@
-import mongoose from 'mongoose'
+import mongoose from "mongoose";
 
-const savePost = mongoose.Schema({
+const savePostSchema = new mongoose.Schema(
+  {
     postId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Community",
-        required: true,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Community",
+      required: true,
+      index: true,
     },
     userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
-    }
-})
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+  },
+  { timestamps: true }
+);
 
-const SavedPost = mongoose.model('SavedPost', savePost)
+savePostSchema.index({ postId: 1, userId: 1 }, { unique: true });
+
+const SavedPost =
+  mongoose.models.SavedPost || mongoose.model("SavedPost", savePostSchema);
 
 export default SavedPost;

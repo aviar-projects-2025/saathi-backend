@@ -128,15 +128,28 @@ const getSharedFlight = (a, b) => {
   return null;
 };
 
-const getPrivateSubmittedTripIds = async () =>
-  TravelBuddyRequest.distinct("submittedTripId", {
-    $or: [
-      { status: "PENDING" },
-      { status: "ACCEPTED" },
-      { status: "REJECTED", publishOnReject: { $ne: true } },
-      { status: "CANCELLED", publishOnReject: { $ne: true } },
-    ],
+/* Every trip id that has ever been a request submission. */
+const getAllSubmittedTripIds = async () => {
+  const ids = await TravelBuddyRequest.distinct("submittedTripId", {});
+  return ids.filter(Boolean);
+};
+
+/* Submission ids that were explicitly published by the requester (rejected + publishOnReject: true). */
+const getPublishedSubmittedTripIds = async () => {
+  const ids = await TravelBuddyRequest.distinct("submittedTripId", {
+    status: "REJECTED",
+    publishOnReject: true,
   });
+  return ids.filter(Boolean);
+};
+
+/* A trip is publicly visible if it's not a submission at all, OR it's a published submission. */
+const buildPublicTripFilter = (allSubmittedTripIds, publishedSubmittedIds) => ({
+  $or: [
+    { _id: { $nin: allSubmittedTripIds } },
+    { _id: { $in: publishedSubmittedIds } },
+  ],
+});
 
 /* ─────────────── Matches ─────────────── */
 export const getMatches = async (req, res) => {
@@ -152,18 +165,24 @@ export const getMatches = async (req, res) => {
     if (!Array.isArray(trip.flights) || trip.flights.length === 0) return res.status(400).json({ success: false, message: "This trip has no flight segments" });
 
     const oppositeRole = trip.role === "parent" ? "companion" : "parent";
-    const privateSubmittedTripIds = await getPrivateSubmittedTripIds();
+    const allSubmittedTripIds = await getAllSubmittedTripIds();
+    const publishedSubmittedIds = await getPublishedSubmittedTripIds();
 
-    if (trip.isRequestSubmission || privateSubmittedTripIds.some((t) => String(t) === String(trip._id))) {
+    // The trip itself must not be a submission that's still private.
+    const isOwnTripSubmitted = allSubmittedTripIds.some((t) => String(t) === String(trip._id));
+    const isOwnTripPublished = publishedSubmittedIds.some((t) => String(t) === String(trip._id));
+    if (isOwnTripSubmitted && !isOwnTripPublished) {
       return res.status(403).json({ success: false, message: "This submitted offer is private until it is published or approved." });
     }
 
     const candidates = await TravelBuddy.find({
-      _id: { $ne: trip._id, $nin: privateSubmittedTripIds },
-      createdBy: { $ne: userId },
-      role: oppositeRole,
-      status: "OPEN",
-      isRequestSubmission: { $ne: true },
+      $and: [
+        { _id: { $ne: trip._id } },
+        { createdBy: { $ne: userId } },
+        { role: oppositeRole },
+        { status: "OPEN" },
+        buildPublicTripFilter(allSubmittedTripIds, publishedSubmittedIds),
+      ],
     }).select("role flights languages help createdAt").lean();
 
     const tier1 = [], tier2 = [];
@@ -226,27 +245,34 @@ export const getAllTrips = async (req, res) => {
   try {
     const { search, role } = req.query;
     const userId = getUserId(req);
-    const privateSubmittedTripIds = await getPrivateSubmittedTripIds();
 
-    const query = {
-      status: "OPEN",
-      createdBy: { $ne: userId },
-      _id: { $nin: privateSubmittedTripIds },
-      isRequestSubmission: { $ne: true },
-    };
+    const allSubmittedTripIds = await getAllSubmittedTripIds();
+    const publishedSubmittedIds = await getPublishedSubmittedTripIds();
 
-    if (role && ["parent", "companion"].includes(role)) query.role = role;
+    const and = [
+      { status: "OPEN" },
+      { createdBy: { $ne: userId } },
+      buildPublicTripFilter(allSubmittedTripIds, publishedSubmittedIds),
+    ];
+
+    if (role && ["parent", "companion"].includes(role)) {
+      and.push({ role });
+    }
 
     if (search) {
       const esc = String(search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const rx = new RegExp(esc, "i");
-      query.$or = [
-        { "flights.flightNumber": rx },
-        { "flights.airline": rx },
-        { "flights.fromCode": rx },
-        { "flights.toCode": rx },
-      ];
+      and.push({
+        $or: [
+          { "flights.flightNumber": rx },
+          { "flights.airline": rx },
+          { "flights.fromCode": rx },
+          { "flights.toCode": rx },
+        ],
+      });
     }
+
+    const query = { $and: and };
 
     const trips = await TravelBuddy.find(query)
       .populate("createdBy", "firstName lastName profileImage languages")
@@ -309,7 +335,7 @@ export const createTravelBuddyRequest = async (req, res) => {
   let submittedTrip = null;
   try {
     if (!userId || !mongoose.isValidObjectId(userId)) return res.status(401).json({ success: false, message: "Authentication required." });
-    const { targetTripId, trip: tripPayload, contactConsent } = req.body || {};
+    const { targetTripId, trip: tripPayload, contactConsent, publishOnReject } = req.body || {};
     if (contactConsent !== true) return res.status(400).json({ success: false, message: "You must agree to contact sharing before sending this request." });
     if (!mongoose.isValidObjectId(targetTripId) || !tripPayload || typeof tripPayload !== "object") {
       return res.status(400).json({ success: false, message: "A valid target trip and submitted trip are required." });
@@ -323,8 +349,28 @@ export const createTravelBuddyRequest = async (req, res) => {
     const expectedRole = targetTrip.role === "parent" ? "companion" : "parent";
     if (tripPayload.role !== expectedRole) return res.status(400).json({ success: false, message: `The submitted trip must use the ${expectedRole} role.` });
 
-    const existing = await TravelBuddyRequest.findOne({ targetTripId: targetTrip._id, requesterId: userId, status: "PENDING" });
-    if (existing) return res.status(409).json({ success: false, message: "You already have a pending request for this trip.", data: existing });
+    const priorRequest = await TravelBuddyRequest.findOne({
+      targetTripId: targetTrip._id,
+      requesterId: userId,
+      status: { $in: ["PENDING", "ACCEPTED", "REJECTED"] },
+    });
+
+    if (priorRequest) {
+      const statusLabel =
+        priorRequest.status === "PENDING"
+          ? "pending"
+          : priorRequest.status === "ACCEPTED"
+            ? "already approved"
+            : "declined";
+      return res.status(409).json({
+        success: false,
+        message:
+          priorRequest.status === "REJECTED"
+            ? "This trip already declined your request. You cannot send another one."
+            : `You already have a ${statusLabel} request for this trip.`,
+        data: priorRequest,
+      });
+    }
 
     const safe = {
       role: tripPayload.role,
@@ -336,6 +382,8 @@ export const createTravelBuddyRequest = async (req, res) => {
       pickup: tripPayload.pickup,
       status: "OPEN",
       matchedWith: null,
+      // ★ isRequestSubmission must be true so it's excluded from Browse by default.
+      isRequestSubmission: true,
     };
 
     submittedTrip = await TravelBuddy.create({ ...safe, createdBy: userId });
@@ -352,6 +400,9 @@ export const createTravelBuddyRequest = async (req, res) => {
         recipientContactConsent: false,
         recipientConsentAt: null,
         status: "PENDING",
+        // ★ Store the requester's publish-on-reject preference on the request
+        //   so the browse query can honour it.
+        publishOnReject: publishOnReject === true,
       });
     } catch (err) {
       await TravelBuddy.findByIdAndDelete(submittedTrip._id);
@@ -462,11 +513,18 @@ export const respondToTravelBuddyRequest = async (req, res) => {
         { new: true }
       );
       if (!rejected) return res.status(409).json({ success: false, message: "This request was already processed." });
+
+      // ★ Move the submitted trip to CANCELLED so it leaves the open pool
+      //   and appears in the requester's History tab.
+      await TravelBuddy.findByIdAndUpdate(rejected.submittedTripId, {
+        $set: { status: "CANCELLED", matchedWith: null },
+      });
+
       await notifyUser({
         userId: request.requesterId, actorId: userId,
         type: "travel_buddy_request_rejected",
         title: "Travel Buddy request declined",
-        message: "Your Travel Buddy request was declined.",
+        message: "Your Travel Buddy request was declined. It has been moved to your History.",
         data: { requestId: String(request._id), targetTripId: String(request.targetTripId), submittedTripId: String(request.submittedTripId) },
       });
       return res.status(200).json({ success: true, message: "Request rejected.", data: rejected });
@@ -510,6 +568,20 @@ export const respondToTravelBuddyRequest = async (req, res) => {
       { targetTripId: targetTrip._id, _id: { $ne: request._id }, status: "PENDING" },
       { $set: { status: "REJECTED", respondedAt: new Date() } }
     );
+
+    // ★ Auto-rejected competitor requests also get their submissions cancelled
+    //   so they show in the requester's History rather than sitting invisible.
+    const otherPending = await TravelBuddyRequest.find({
+      targetTripId: targetTrip._id,
+      _id: { $ne: request._id },
+      status: "REJECTED",
+    }).lean();
+    if (otherPending.length) {
+      await TravelBuddy.updateMany(
+        { _id: { $in: otherPending.map((r) => r.submittedTripId) } },
+        { $set: { status: "CANCELLED", matchedWith: null } }
+      );
+    }
 
     await notifyUser({
       userId: request.requesterId, actorId: userId,
@@ -677,7 +749,6 @@ export const updateTrip = async (req, res) => {
     if (body.relationship !== undefined) update.relationship = body.relationship;
     if (body.ageBand !== undefined) update.ageBand = body.ageBand;
 
-    // If role flips to "companion", relationship/ageBand no longer apply.
     if (body.role === "companion") {
       update.relationship = "";
       update.ageBand = "";
@@ -720,6 +791,12 @@ export const updateTrip = async (req, res) => {
       await TravelBuddyRequest.updateMany(
         { targetTripId: id, status: "PENDING" },
         { $set: { status: "REJECTED", respondedAt: new Date() } }
+      );
+
+      // Also cancel the submitted trips so they show in History
+      await TravelBuddy.updateMany(
+        { _id: { $in: pendingOnTrip.map((r) => r.submittedTripId) } },
+        { $set: { status: "CANCELLED", matchedWith: null } }
       );
 
       const changeDescription = roleChanged && flightsChanged
@@ -799,6 +876,13 @@ export const cancelTrip = async (req, res) => {
         { targetTripId: id, status: "PENDING" },
         { $set: { status: "REJECTED", respondedAt: new Date() } }
       );
+
+      if (pendingOnTrip.length) {
+        await TravelBuddy.updateMany(
+          { _id: { $in: pendingOnTrip.map((r) => r.submittedTripId) } },
+          { $set: { status: "CANCELLED", matchedWith: null } }
+        );
+      }
 
       await Promise.all(
         pendingOnTrip.map((reqDoc) =>
