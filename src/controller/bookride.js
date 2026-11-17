@@ -179,12 +179,30 @@ const statusBookride = async (req, res) => {
   try {
     const { requestId } = req.params;
     const { type: statusType } = req.query;
-    console.log("statusType", statusType);
+
+    // ★ NEW: scope lets the caller reject ONLY pending or ONLY approved seats.
+    //   - scope=pending  → only pending seats are rejected (approved stay intact)
+    //   - scope=approved → only approved seats are rejected (pending stay intact)
+    //   - scope=all      → legacy behaviour: reject both pending + approved
+    // Default is "all" to preserve backward compatibility for any caller that
+    // doesn't send a scope.
+    const scope = String(
+      req.query.scope || req.body?.scope || "all"
+    ).toLowerCase();
+
+    console.log("statusType", statusType, "| scope:", scope);
 
     if (!["Approve", "Reject", "Cancel"].includes(statusType)) {
       return res.status(400).json({
         success: false,
         message: "Invalid status type",
+      });
+    }
+
+    if (statusType === "Reject" && !["pending", "approved", "all"].includes(scope)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid reject scope. Use 'pending', 'approved' or 'all'.",
       });
     }
 
@@ -233,7 +251,7 @@ const statusBookride = async (req, res) => {
     const hasPendingSeats = currentPendingSeats > 0;
 
     // ──────────────────────────────────────────────────
-    // APPROVE — unchanged from your logic
+    // APPROVE — unchanged
     // ──────────────────────────────────────────────────
     if (statusType === "Approve") {
       if (ride.availableSeats === 0) {
@@ -316,39 +334,95 @@ const statusBookride = async (req, res) => {
     }
 
     // ──────────────────────────────────────────────────
-    // REJECT — releases ALL seats (approved + pending)
+    // REJECT — behaviour now driven by `scope`
+    //
+    //   scope=pending  → reject ONLY pending seats.
+    //                    Approved seats stay intact. Request stays ACCEPTED
+    //                    (or PENDING if there were no approved seats).
+    //   scope=approved → reject ONLY approved seats.
+    //                    Pending seats stay intact. Request stays PENDING
+    //                    (or REJECTED if there were no pending seats).
+    //   scope=all      → reject both pending and approved (legacy default).
     // ──────────────────────────────────────────────────
     else if (statusType === "Reject") {
-      const seatsToReject = currentPendingSeats + currentApprovedSeats;
+      const canRejectPending = currentPendingSeats > 0;
+      const canRejectApproved = currentApprovedSeats > 0;
+
+      // Which pools are we actually rejecting in this call?
+      let rejectPending = false;
+      let rejectApproved = false;
+
+      if (scope === "pending") {
+        rejectPending = true;
+      } else if (scope === "approved") {
+        rejectApproved = true;
+      } else {
+        // "all"
+        rejectPending = canRejectPending;
+        rejectApproved = canRejectApproved;
+      }
+
+      const seatsToReject =
+        (rejectPending ? currentPendingSeats : 0) +
+        (rejectApproved ? currentApprovedSeats : 0);
 
       if (seatsToReject === 0) {
         return res.status(400).json({
           success: false,
-          message: `Cannot reject request with status ${previousStatus}`,
+          message:
+            scope === "pending"
+              ? `No pending seats to reject (status ${previousStatus})`
+              : scope === "approved"
+                ? `No approved seats to reject (status ${previousStatus})`
+                : `Cannot reject request with status ${previousStatus}`,
         });
       }
 
-      bookingRequest.approvedSeats = 0;
+      // Apply the partial/full rejection on the request document.
+      if (rejectPending) {
+        bookingRequest.pendingReqSeats = 0;
+        bookingRequest.pendingMembers = [];
+      }
+      if (rejectApproved) {
+        bookingRequest.approvedSeats = 0;
+        bookingRequest.members = [];
+      }
+
       bookingRequest.rejectedSeats = currentRejectedSeats + seatsToReject;
-      bookingRequest.pendingReqSeats = 0;
-      bookingRequest.members = [];
-      bookingRequest.pendingMembers = [];
-      bookingRequest.seatsRequested = Math.max(seatsToReject, 1);
-      bookingRequest.status = "REJECTED";
 
-      await bookingRequest.save();
-
-      // Only approved seats were ever deducted from ride.availableSeats.
-      // Pending seats were not, so only the approved ones need to be returned.
-      if (currentApprovedSeats > 0) {
+      // Only approved seats were ever deducted from ride.availableSeats,
+      // so only those get refunded.
+      if (rejectApproved && currentApprovedSeats > 0) {
         ride.availableSeats =
           Number(ride.availableSeats || 0) + currentApprovedSeats;
       }
       ride.rejectedSeats = Number(ride.rejectedSeats || 0) + seatsToReject;
 
+      // Decide the new request status based on what's left.
+      const remainingPending = Number(bookingRequest.pendingReqSeats || 0);
+      const remainingApproved = Number(bookingRequest.approvedSeats || 0);
+
+      if (remainingApproved > 0) {
+        // Partial reject of pending only — request is still approved.
+        bookingRequest.status = "ACCEPTED";
+      } else if (remainingPending > 0) {
+        // Partial reject of approved only — pending still waiting.
+        bookingRequest.status = "PENDING";
+      } else {
+        // Nothing left → fully rejected.
+        bookingRequest.status = "REJECTED";
+      }
+
+      bookingRequest.seatsRequested = Math.max(
+        remainingApproved + remainingPending,
+        1
+      );
+
       if (ride.status !== "CANCELLED" && ride.status !== "CLOSED") {
         ride.status = ride.availableSeats > 0 ? "OPEN" : "FULL";
       }
+
+      await bookingRequest.save();
       await ride.save();
     }
 
@@ -386,7 +460,7 @@ const statusBookride = async (req, res) => {
     }
 
     // ──────────────────────────────────────────────────
-    // Summary + notifications (unchanged)
+    // Summary + notifications
     // ──────────────────────────────────────────────────
     const summary = await Bookride.aggregate([
       {
@@ -423,6 +497,7 @@ const statusBookride = async (req, res) => {
       data: {
         rideId: bookingRequest.rideId,
         requestId: bookingRequest._id,
+        scope: statusType === "Reject" ? scope : undefined,
       },
     });
 
@@ -434,6 +509,7 @@ const statusBookride = async (req, res) => {
         _id: notifictioncreated._id,
         rideId: bookingRequest.rideId,
         requestId: bookingRequest._id,
+        scope: statusType === "Reject" ? scope : undefined,
       },
     });
 
@@ -443,7 +519,11 @@ const statusBookride = async (req, res) => {
         statusType === "Approve"
           ? "Request approved successfully"
           : statusType === "Reject"
-            ? "Request rejected successfully"
+            ? scope === "pending"
+              ? "Pending seats rejected successfully"
+              : scope === "approved"
+                ? "Approved seats rejected successfully"
+                : "Request rejected successfully"
             : "Request cancelled successfully",
       data: {
         request: updatedBookingRequest,
