@@ -1,9 +1,9 @@
-import cloudinary from "../../config/cloudinary.js";
 import Community from "../model/community.js";
 import {
   getProfileImageSignedUrl,
   deleteS3Object,
 } from "../controller/s3Controller.js";
+import SavedPost from "../model/communitySaved.js";
 
 /* ─── Helpers ─── */
 
@@ -80,23 +80,23 @@ export const deletePostService = async (postId, userId) => {
     throw error;
   }
 
+  // S3-only cleanup. No Cloudinary.
   if (post.postImage && !isHttpUrl(post.postImage)) {
-    await deleteS3Object(post.postImage);
-  }
-
-  if (post.communityImgPublicId) {
     try {
-      await cloudinary.uploader.destroy(post.communityImgPublicId);
+      await deleteS3Object(post.postImage);
     } catch (error) {
-      console.error("Cloudinary delete failed:", error.message);
+      console.error("S3 delete failed:", error.message);
     }
   }
+
+  // legacy field — clear it if present, we no longer manage Cloudinary
+  if (post.communityImgPublicId) post.communityImgPublicId = undefined;
 
   await Community.findByIdAndDelete(postId);
   return { message: "Post deleted successfully" };
 };
 
-/* ─── Read: feed (rooms + sub-categories) ─── */
+/* ─── Read: feed ─── */
 export const getPostsService = async (
   page = 1,
   limit = 10,
@@ -107,7 +107,6 @@ export const getPostsService = async (
 
   const query = {};
   if (room && room.toLowerCase() !== "all") query.room = room;
-  // frontend sends "All" (capital A) – compare case-insensitively
   if (subCategory && subCategory.toLowerCase() !== "all") {
     query.subCategory = subCategory;
   }
@@ -168,15 +167,10 @@ export const getProfilePostsService = async (authorId, page = 1, limit = 12) => 
   };
 };
 
-/* ─── Edit ─── */
-// updates: { title?, description? }
-export const editPostService = async (
-  postId,
-  userId,
-  updates = {},
-  imageKey,
-  communityImgPublicId
-) => {
+/* ─── Edit — takes an S3 KEY, returns populated + signed ─── */
+// updates: { title?, description?, when? }
+// imageKey: optional S3 key of a newly uploaded image
+export const editPostService = async (postId, userId, updates = {}, imageKey) => {
   const post = await Community.findById(postId);
   if (!post) {
     const error = new Error("Post not found");
@@ -192,29 +186,33 @@ export const editPostService = async (
 
   if (typeof updates.description === "string") post.description = updates.description;
   if (typeof updates.title === "string") post.title = updates.title;
-  if (typeof updates.when === "string") post.timeframe = updates.when
+  if (typeof updates.when === "string") post.timeframe = updates.when;
 
   if (imageKey) {
+    // delete the previous S3 object (if it was an S3 key, not a legacy HTTP URL)
     if (post.postImage && !isHttpUrl(post.postImage)) {
-      await deleteS3Object(post.postImage);
-    }
-
-    if (post.communityImgPublicId) {
       try {
-        await cloudinary.uploader.destroy(post.communityImgPublicId);
+        await deleteS3Object(post.postImage);
       } catch (error) {
-        console.error("Cloudinary delete failed:", error.message);
+        console.error("S3 delete failed:", error.message);
       }
-      post.communityImgPublicId = undefined;
     }
-
     post.postImage = imageKey;
-
-    if (communityImgPublicId) {
-      post.communityImgPublicId = communityImgPublicId;
-    }
+    if (post.communityImgPublicId) post.communityImgPublicId = undefined;
   }
 
   await post.save();
-  return post;
+
+  // ★ Return the same shape as GET — populated author + signed URLs.
+  //   This is what fixes the "avatar collapses after edit" bug.
+  const populated = await Community.findById(post._id)
+    .populate("authorId", "firstName lastName profileImage zipcode referredBy")
+    .lean();
+
+  return await addSignedUrls(populated);
+};
+
+export const removeSavesForPostService = async (postId) => {
+  const { deletedCount } = await SavedPost.deleteMany({ postId });
+  return { deletedCount };
 };

@@ -8,10 +8,10 @@ import {
 import { verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
-// router.use(verifyToken);
 
-router.post("/:postId/:userId", savePost);
-router.get("/:userId", getSavedPosts);
-router.delete("/:postId/:userId", removeSavedPost);
+router.post("/:postId/:userId", verifyToken, savePost);
+router.get("/:userId",verifyToken, getSavedPosts);
+router.delete("/:postId/:userId",verifyToken, removeSavedPost);
 
 export default router;
+

@@ -2,6 +2,7 @@ import express from 'express'
 import multer from 'multer'
 import { createPost, getPosts, deletePost, editPost, getPostedImage } from '../controller/community.js';
 import { getUploadSignature } from '../../config/cloudinary.js';
+import { verifyToken } from '../middleware/auth.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -9,7 +10,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.get('/', getPosts)
 router.get('/profile/:userId', getPostedImage)
 router.post('/', upload.single("postImage"), createPost)
-router.delete('/:postId', deletePost)
+router.delete('/:postId/delete', verifyToken, deletePost)
 // router.put("/:postId", editPost);
 router.put("/:postId", upload.single("postImage"), editPost);
 router.get("/upload-signature", getUploadSignature);
