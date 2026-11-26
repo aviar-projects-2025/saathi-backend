@@ -1,17 +1,41 @@
+// service/ride.js
 import mongoose from "mongoose";
 import BookRide from "../model/bookride.js";
 import Ride from "../model/ride.js";
 import User from "../model/user.js";
 import { getProfileImageSignedUrl } from "../controller/s3Controller.js";
+import { derivePublicLocationLabel } from "../utils/location.js";
 
 export const createRideService = async (data) => {
   return await Ride.create(data);
 };
 
-const fetchMyRideCategory = async ({ query, pageNumber, limitNumber, skip, sort }) => {
-  const totalRides = await Ride.countDocuments(query);
+/* ──────────────────────────────────────────────────────────
+   TC-1: backfill public labels on every read (legacy safety)
+   TC-19: enrich with derived properties used by card renderers
+   ────────────────────────────────────────────────────────── */
+const enrichRide = (ride) => {
+  if (!ride) return ride;
+  return {
+    ...ride,
+    fromPublic: ride.fromPublic || derivePublicLocationLabel(ride.from),
+    destinationPublic:
+      ride.destinationPublic || derivePublicLocationLabel(ride.destination),
+  };
+};
 
-  const rides = await Ride.find(query)
+const fetchMyRideCategory = async ({ query, pageNumber, limitNumber, skip, sort }) => {
+  // ★ TC-4: never return non-US rides even if isUS is missing (legacy)
+  const safeQuery = {
+    $and: [
+      query,
+      { $or: [{ isUS: true }, { isUS: { $exists: false } }] },
+    ],
+  };
+
+  const totalRides = await Ride.countDocuments(safeQuery);
+
+  const rides = await Ride.find(safeQuery)
     .populate("createdBy", "firstName lastName profileImage zipcode language")
     .populate("actualDriver", "firstName lastName profileImage zipcode language")
     .sort(sort)
@@ -19,7 +43,8 @@ const fetchMyRideCategory = async ({ query, pageNumber, limitNumber, skip, sort 
     .limit(limitNumber)
     .lean();
 
-  const ridesWithImageUrls = await addRideProfileImageUrlsToList(rides);
+  const enriched = rides.map(enrichRide);
+  const ridesWithImageUrls = await addRideProfileImageUrlsToList(enriched);
 
   return {
     rides: ridesWithImageUrls,
@@ -46,15 +71,18 @@ const getMyRidesCategory = async ({ category, userObjectId, pageNumber, limitNum
     status: { $in: ["CANCELLED", "REJECTED", "AUTO_REJECTED"] },
   }).distinct("rideId");
 
-  // ★ FIX: NO LONGER excluding "kind: request" — show everything the user is involved in
   const nonHelpRequestFilter = {};
 
-  // -----------------------------------------------------
-  // MY POSTS — shows ALL rides created by this user (offers + requests)
-  // -----------------------------------------------------
+  // MY POSTS — active only, no Expired
   if (category === "posts") {
     return fetchMyRideCategory({
-      query: { $and: [{ createdBy: userObjectId }, nonHelpRequestFilter] },
+      query: {
+        $and: [
+          { createdBy: userObjectId },
+          nonHelpRequestFilter,
+          { travelStatus: { $nin: ["Expired"] } }, // ★ TC-19
+        ],
+      },
       pageNumber,
       limitNumber,
       skip,
@@ -70,9 +98,6 @@ const getMyRidesCategory = async ({ category, userObjectId, pageNumber, limitNum
     ],
   };
 
-  // -----------------------------------------------------
-  // CURRENT
-  // -----------------------------------------------------
   if (category === "current") {
     return fetchMyRideCategory({
       query: {
@@ -90,9 +115,6 @@ const getMyRidesCategory = async ({ category, userObjectId, pageNumber, limitNum
     });
   }
 
-  // -----------------------------------------------------
-  // UPCOMING
-  // -----------------------------------------------------
   if (category === "upcoming") {
     return fetchMyRideCategory({
       query: {
@@ -100,7 +122,7 @@ const getMyRidesCategory = async ({ category, userObjectId, pageNumber, limitNum
           nonHelpRequestFilter,
           participantFilter,
           { startTime: { $gt: now } },
-          { travelStatus: { $nin: ["Completed", "Cancelled"] } },
+          { travelStatus: { $nin: ["Completed", "Cancelled", "Expired"] } }, // ★ TC-19
         ],
       },
       pageNumber,
@@ -110,9 +132,6 @@ const getMyRidesCategory = async ({ category, userObjectId, pageNumber, limitNum
     });
   }
 
-  // -----------------------------------------------------
-  // HISTORY
-  // -----------------------------------------------------
   if (category === "history") {
     return fetchMyRideCategory({
       query: {
@@ -120,9 +139,9 @@ const getMyRidesCategory = async ({ category, userObjectId, pageNumber, limitNum
           nonHelpRequestFilter,
           {
             $or: [
-              { createdBy: userObjectId, travelStatus: { $in: ["Completed", "Cancelled"] } },
-              { actualDriver: userObjectId, travelStatus: { $in: ["Completed", "Cancelled"] } },
-              { _id: { $in: acceptedRideIds }, travelStatus: { $in: ["Completed", "Cancelled"] } },
+              { createdBy: userObjectId, travelStatus: { $in: ["Completed", "Cancelled", "Expired"] } },   // ★ TC-19
+              { actualDriver: userObjectId, travelStatus: { $in: ["Completed", "Cancelled", "Expired"] } },// ★ TC-19
+              { _id: { $in: acceptedRideIds }, travelStatus: { $in: ["Completed", "Cancelled", "Expired"] } }, // ★ TC-19
               { _id: { $in: endedRequestRideIds } },
             ],
           },
@@ -136,14 +155,19 @@ const getMyRidesCategory = async ({ category, userObjectId, pageNumber, limitNum
   }
 };
 
-// =====================================================
-// FIND / MY RIDES
-// =====================================================
 export const getAllRideService = async ({
-  type = "find", category, userId,
-  searchFrom, searchDestination, search,
-  transportMode, gender, fuelSharing, language,
-  page = 1, limit = 10,
+  type = "find",
+  category,
+  userId,
+  searchFrom,
+  searchDestination,
+  search,
+  transportMode,
+  gender,
+  fuelSharing,
+  language,
+  page = 1,
+  limit = 10,
 }) => {
   const userObjectId = new mongoose.Types.ObjectId(userId);
 
@@ -152,7 +176,13 @@ export const getAllRideService = async ({
   const skip = (pageNumber - 1) * limitNumber;
 
   if (type === "my") {
-    return await getMyRidesCategory({ category, userObjectId, pageNumber, limitNumber, skip });
+    return await getMyRidesCategory({
+      category,
+      userObjectId,
+      pageNumber,
+      limitNumber,
+      skip,
+    });
   }
 
   // ---------------- FIND RIDES ----------------
@@ -161,13 +191,17 @@ export const getAllRideService = async ({
   conditions.push({ createdBy: { $ne: userObjectId } });
   conditions.push({ startTime: { $gt: new Date() } });
   conditions.push({ status: { $in: ["OPEN", "FULL"] } });
+  conditions.push({ status: { $nin: ["EXPIRED", "COMPLETED", "CANCELLED", "CLOSED"] } });
   conditions.push({ travelStatus: { $ne: "Cancelled" } });
+  conditions.push({ travelStatus: { $ne: "Expired" } });
+  conditions.push({ isUS: true }); // ★ TC-4: only US rides in the feed
 
   if (searchFrom?.trim()) {
     const value = searchFrom.trim();
     conditions.push({
       $or: [
         { from: { $regex: value, $options: "i" } },
+        { fromPublic: { $regex: value, $options: "i" } },
         { fromAirport: { $regex: value, $options: "i" } },
         { fromCountry: { $regex: value, $options: "i" } },
       ],
@@ -179,6 +213,7 @@ export const getAllRideService = async ({
     conditions.push({
       $or: [
         { destination: { $regex: value, $options: "i" } },
+        { destinationPublic: { $regex: value, $options: "i" } },
         { toAirport: { $regex: value, $options: "i" } },
         { toCountry: { $regex: value, $options: "i" } },
       ],
@@ -198,6 +233,8 @@ export const getAllRideService = async ({
     const generalSearchConditions = [
       { from: { $regex: searchText, $options: "i" } },
       { destination: { $regex: searchText, $options: "i" } },
+      { fromPublic: { $regex: searchText, $options: "i" } },
+      { destinationPublic: { $regex: searchText, $options: "i" } },
       { fromAirport: { $regex: searchText, $options: "i" } },
       { destinationAirport: { $regex: searchText, $options: "i" } },
       { toAirport: { $regex: searchText, $options: "i" } },
@@ -233,7 +270,8 @@ export const getAllRideService = async ({
     .limit(limitNumber)
     .lean();
 
-  const ridesWithImageUrls = await addRideProfileImageUrlsToList(rides);
+  const enriched = rides.map(enrichRide);
+  const ridesWithImageUrls = await addRideProfileImageUrlsToList(enriched);
 
   return {
     rides: ridesWithImageUrls,
@@ -249,7 +287,8 @@ export const getMyRideCountsService = async ({ userId }) => {
   const now = new Date();
 
   const acceptedRideIds = await BookRide.find({
-    requestedBy: userObjectId, status: "ACCEPTED",
+    requestedBy: userObjectId,
+    status: "ACCEPTED",
   }).distinct("rideId");
 
   const endedRequestRideIds = await BookRide.find({
@@ -257,8 +296,8 @@ export const getMyRideCountsService = async ({ userId }) => {
     status: { $in: ["CANCELLED", "REJECTED", "AUTO_REJECTED"] },
   }).distinct("rideId");
 
-  // ★ FIX: NO LONGER excluding "kind: request"
   const nonHelpRequestFilter = {};
+  const usFilter = { $or: [{ isUS: true }, { isUS: { $exists: false } }] };
 
   const participantFilter = {
     $or: [
@@ -271,6 +310,7 @@ export const getMyRideCountsService = async ({ userId }) => {
   const currentQuery = {
     $and: [
       nonHelpRequestFilter,
+      usFilter,
       participantFilter,
       { startTime: { $lte: now } },
       { travelStatus: { $in: ["Waiting", "Started", "Ongoing"] } },
@@ -280,24 +320,31 @@ export const getMyRideCountsService = async ({ userId }) => {
   const upcomingQuery = {
     $and: [
       nonHelpRequestFilter,
+      usFilter,
       participantFilter,
       { startTime: { $gt: now } },
-      { travelStatus: { $nin: ["Completed", "Cancelled"] } },
+      { travelStatus: { $nin: ["Completed", "Cancelled", "Expired"] } },
     ],
   };
 
   const postsQuery = {
-    $and: [{ createdBy: userObjectId }, nonHelpRequestFilter],
+    $and: [
+      { createdBy: userObjectId },
+      nonHelpRequestFilter,
+      usFilter,
+      { travelStatus: { $nin: ["Expired"] } },
+    ],
   };
 
   const historyQuery = {
     $and: [
       nonHelpRequestFilter,
+      usFilter,
       {
         $or: [
-          { createdBy: userObjectId, travelStatus: { $in: ["Completed", "Cancelled"] } },
-          { actualDriver: userObjectId, travelStatus: { $in: ["Completed", "Cancelled"] } },
-          { _id: { $in: acceptedRideIds }, travelStatus: { $in: ["Completed", "Cancelled"] } },
+          { createdBy: userObjectId, travelStatus: { $in: ["Completed", "Cancelled", "Expired"] } },
+          { actualDriver: userObjectId, travelStatus: { $in: ["Completed", "Cancelled", "Expired"] } },
+          { _id: { $in: acceptedRideIds }, travelStatus: { $in: ["Completed", "Cancelled", "Expired"] } },
           { _id: { $in: endedRequestRideIds } },
         ],
       },
@@ -314,15 +361,17 @@ export const getMyRideCountsService = async ({ userId }) => {
   return { current, upcoming, posts, history };
 };
 
-// =====================================================
-// SINGLE / DELETE / UPDATE
-// =====================================================
+/* ═════════════════════════════════════════════════════════════
+   SINGLE / DELETE / UPDATE
+   ═════════════════════════════════════════════════════════════ */
 export const getRideById = async (id) => {
   const ride = await Ride.findById(id)
     .populate("createdBy", "firstName lastName profileImage zipcode language")
     .populate("actualDriver", "firstName lastName profileImage zipcode language");
 
-  return addRideProfileImageUrls(ride);
+  if (!ride) return null;
+  const lean = typeof ride.toObject === "function" ? ride.toObject() : ride;
+  return addRideProfileImageUrls(enrichRide(lean));
 };
 
 export const deleteRideService = async (id) => {
@@ -330,15 +379,37 @@ export const deleteRideService = async (id) => {
 };
 
 export const updateRideService = async (id, data) => {
+  // ★ TC-19: block edits on expired rides
+  const current = await Ride.findById(id).select("travelStatus status").lean();
+  if (current?.travelStatus === "Expired" || current?.status === "EXPIRED") {
+    throw new Error("This ride has expired and can no longer be edited.");
+  }
+
   await BookRide.updateMany(
     { rideId: id, status: "PENDING" },
     { status: "AUTO_REJECTED" }
   );
 
-  const existingRide = await Ride.findById(id);
-  const updatedRide = await Ride.findByIdAndUpdate(id, data, { new: true });
+  // ★ TC-19: keep `status` in sync with `travelStatus`
+  const derivedStatus =
+    data.travelStatus === "Completed"
+      ? "COMPLETED"
+      : data.travelStatus === "Cancelled"
+        ? "CANCELLED"
+        : data.travelStatus === "Expired"
+          ? "EXPIRED"
+          : undefined;
 
-  if (existingRide.travelStatus !== "Completed" && updatedRide.travelStatus === "Completed") {
+  const patch = { ...data };
+  if (derivedStatus) patch.status = derivedStatus;
+
+  const existingRide = await Ride.findById(id);
+  const updatedRide = await Ride.findByIdAndUpdate(id, patch, { new: true });
+
+  if (
+    existingRide.travelStatus !== "Completed" &&
+    updatedRide?.travelStatus === "Completed"
+  ) {
     await User.findByIdAndUpdate(updatedRide.createdBy, {
       $inc: { completedRideCount: 1 },
     });
@@ -347,12 +418,13 @@ export const updateRideService = async (id, data) => {
   return updatedRide;
 };
 
-// =====================================================
-// HELPERS
-// =====================================================
+/* ═════════════════════════════════════════════════════════════
+   HELPERS
+   ═════════════════════════════════════════════════════════════ */
 const addProfileImageUrl = async (user) => {
   if (!user || typeof user !== "object") return user;
-  const userData = typeof user.toObject === "function" ? user.toObject() : { ...user };
+  const userData =
+    typeof user.toObject === "function" ? user.toObject() : { ...user };
   if (!userData.profileImage) {
     return { ...userData, profileImageUrl: null };
   }
@@ -369,7 +441,8 @@ const addProfileImageUrl = async (user) => {
 
 const addRideProfileImageUrls = async (ride) => {
   if (!ride) return ride;
-  const rideData = typeof ride.toObject === "function" ? ride.toObject() : { ...ride };
+  const rideData =
+    typeof ride.toObject === "function" ? ride.toObject() : { ...ride };
   const [createdBy, actualDriver] = await Promise.all([
     addProfileImageUrl(rideData.createdBy),
     addProfileImageUrl(rideData.actualDriver),

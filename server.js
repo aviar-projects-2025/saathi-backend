@@ -35,11 +35,13 @@ import { startAutoRateJob } from "./src/crons/autoRateCompletedRides.job.js";
 import { Server } from "socket.io";
 import http from "http";
 import { initSocket } from "./socket.js";
+import { startExpireRidesJob } from "./src/crons/expireRides.js";
 
 const { default: DBConnection } = await import("./config/db.js");
 const { default: app } = await import("./app.js");
 
 startAutoRateJob();
+startExpireRidesJob();
 DBConnection();
 const server = http.createServer(app);
 initSocket(server);

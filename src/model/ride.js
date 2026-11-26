@@ -1,3 +1,4 @@
+// model/ride.js
 import mongoose from "mongoose";
 
 const rideSchema = new mongoose.Schema(
@@ -10,7 +11,6 @@ const rideSchema = new mongoose.Schema(
       index: true,
     },
 
-    /** "offer" = a driver posting seats, "request" = a passenger asking for a ride */
     kind: {
       type: String,
       enum: ["offer", "request"],
@@ -22,12 +22,12 @@ const rideSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
-
     helpProposalId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "HelpProposal",
       default: null,
     },
+
     /* ─────────── Trip basics ─────────── */
     modeOfTravel: {
       type: String,
@@ -38,12 +38,15 @@ const rideSchema = new mongoose.Schema(
     from: { type: String, required: true },
     destination: { type: String, required: true },
 
+    // ★ TC-1: public labels (city / airport / landmark) — NEVER the street
+    fromPublic: { type: String, default: "" },
+    destinationPublic: { type: String, default: "" },
+
     fromLocation: {
       address: { type: String, default: "" },
       latitude: { type: Number, min: -90, max: 90 },
       longitude: { type: Number, min: -180, max: 180 },
     },
-
     destinationLocation: {
       address: { type: String, default: "" },
       latitude: { type: Number, min: -90, max: 90 },
@@ -57,13 +60,12 @@ const rideSchema = new mongoose.Schema(
     endTime: { type: Date },
     lastRideStartedNotificationAt: { type: Date, default: null },
 
-    /** IANA-style timezone label chosen by the user, e.g. "Central (CT)" */
     timeZone: { type: String, default: "Central (CT)" },
-
-    /** Category chosen on step 1 */
     category: { type: String, default: "" },
-
     description: { type: String, default: "" },
+
+    /* ─────────── TC-4: US geo-fence flag ─────────── */
+    isUS: { type: Boolean, default: false, index: true },
 
     /* ─────────── Offer-only: seats, cost, options ─────────── */
     availableSeats: {
@@ -78,7 +80,6 @@ const rideSchema = new mongoose.Schema(
       min: 0,
       max: 7,
     },
-
     totalSeats: {
       type: Number,
       required: function () {
@@ -90,22 +91,14 @@ const rideSchema = new mongoose.Schema(
       },
     },
 
-    /** Legacy name — kept for compatibility with older records */
     fuelSharing: { type: Number },
-
-    /** New: cost share per seat in USD (null = free ride) */
-    costPerSeat: {
-      type: Number,
-      default: null,
-      min: 0,
-    },
+    costPerSeat: { type: Number, default: null, min: 0 },
 
     luggageSpace: {
       type: String,
       enum: ["None", "1–2 bags", "3+ bags", ""],
       default: "None",
     },
-
     childFriendly: { type: Boolean, default: false },
     recurringRide: { type: Boolean, default: false },
     womenOnly: { type: Boolean, default: false },
@@ -189,7 +182,7 @@ const rideSchema = new mongoose.Schema(
       default: "Any",
     },
 
-    /* ─────────── Status ─────────── */
+    /* ─────────── Status (TC-19 included) ─────────── */
     status: {
       type: String,
       enum: ["OPEN", "FULL", "CLOSED", "EXPIRED", "COMPLETED", "CANCELLED"],
@@ -197,16 +190,20 @@ const rideSchema = new mongoose.Schema(
     },
     travelStatus: {
       type: String,
-      enum: ["Waiting", "Started", "Ongoing", "Completed", "Cancelled"],
+      enum: ["Waiting", "Started", "Ongoing", "Completed", "Cancelled", "Expired"],
       default: "Waiting",
     },
+    expiredAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
 
-/* Useful indexes for Find Ride queries */
+/* Useful indexes for Find Ride / My Rides queries */
 rideSchema.index({ kind: 1, status: 1, startTime: 1 });
 rideSchema.index({ createdBy: 1, kind: 1, createdAt: -1 });
+rideSchema.index({ isUS: 1, status: 1, startTime: 1 });          // ★ TC-4
+rideSchema.index({ isUS: 1, createdBy: 1, travelStatus: 1 });    // ★ TC-4
+rideSchema.index({ travelStatus: 1, startTime: 1 });             // ★ TC-19
 
 const Ride = mongoose.model("Ride", rideSchema);
 export default Ride;
