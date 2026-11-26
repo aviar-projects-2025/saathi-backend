@@ -332,18 +332,6 @@ const statusBookride = async (req, res) => {
       }
       await ride.save();
     }
-
-    // ──────────────────────────────────────────────────
-    // REJECT — behaviour now driven by `scope`
-    //
-    //   scope=pending  → reject ONLY pending seats.
-    //                    Approved seats stay intact. Request stays ACCEPTED
-    //                    (or PENDING if there were no approved seats).
-    //   scope=approved → reject ONLY approved seats.
-    //                    Pending seats stay intact. Request stays PENDING
-    //                    (or REJECTED if there were no pending seats).
-    //   scope=all      → reject both pending and approved (legacy default).
-    // ──────────────────────────────────────────────────
     else if (statusType === "Reject") {
       const canRejectPending = currentPendingSeats > 0;
       const canRejectApproved = currentApprovedSeats > 0;

@@ -54,9 +54,14 @@ export const getAllUsers = async () => {
 // ★ FIXED: Attach signed URL for the main user AND the referredBy user
 export const getUserById = async (id) => {
   const user = await User.findById(id)
-    .populate("referredBy", "firstName lastName profileImage city language")
+    // ★ exclude private fields; include approval + referrer
+    .select(" -registrationCredential -__v")
+    .populate(
+      "referredBy",
+      "firstName lastName profileImage city language approvedAt createdAt"
+    )
     .lean();
-    
+
   if (!user) return null;
 
   // Sign the main user's image
@@ -67,7 +72,10 @@ export const getUserById = async (id) => {
     userWithUrl.referredBy = await attachSignedProfileUrl(userWithUrl.referredBy);
   }
 
-  return userWithUrl;
+  // ★ How many members this user has vouched for
+  const membersReferred = await User.countDocuments({ referredBy: id });
+
+  return { ...userWithUrl, membersReferred };
 };
 
 export const loggedinUser = async (email) => {

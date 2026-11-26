@@ -29,6 +29,7 @@ export const savePost = async (req, res) => {
     if (!mongoose.isValidObjectId(postId) || !mongoose.isValidObjectId(userId)) {
       return res.status(400).json({ status: false, message: "Invalid post or user id." });
     }
+    
     const postExists = await Community.exists({ _id: postId });
     if (!postExists) return res.status(404).json({ status: false, message: "Post not found." });
 
@@ -36,8 +37,10 @@ export const savePost = async (req, res) => {
     if (existing) {
       return res.status(200).json({ status: true, message: "Post already saved.", data: existing, alreadySaved: true });
     }
+    
     const saved = await SavedPost.create({ postId, userId });
     return res.status(201).json({ status: true, message: "Post saved!", data: saved });
+    
   } catch (error) {
     if (error?.code === 11000) {
       const { postId, userId } = req.params;
@@ -107,7 +110,11 @@ export const removeSavedPost = async (req, res) => {
       return res.status(400).json({ status: false, message: "Invalid post or user id." });
     }
     const removed = await SavedPost.findOneAndDelete({ postId, userId });
-    if (!removed) return res.status(404).json({ status: false, message: "Post was not saved." });
+    
+    if (!removed) {
+      return res.status(404).json({ status: false, message: "Post was not saved." });
+    }
+    
     return res.status(200).json({ status: true, message: "Post unsaved." });
   } catch (error) {
     console.error("removeSavedPost error:", error);

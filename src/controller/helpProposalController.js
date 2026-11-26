@@ -80,6 +80,9 @@ export async function createHelpProposal(req, res) {
   const helperId = currentUserId(req);
   const { requestRideId, offerDetails } = req.body || {};
 
+  console.log(requestRideId,'Request Id')
+  console.log(offerDetails,'offerDetails')
+
   try {
     if (!helperId) return sendError(res, 401, "Authentication is required.", "UNAUTHENTICATED");
     if (!mongoose.isValidObjectId(requestRideId)) return sendError(res, 400, "Invalid request ride ID.", "INVALID_RIDE_ID");
