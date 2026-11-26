@@ -596,44 +596,46 @@ export const sendLoginOtp = async (req, res) => {
 
         let phoneNumber = mobileNumber.toString().trim();
 
-        if (process.env.NODE_ENV === "development") {
-            if (phoneNumber.startsWith("+91")) {
-                // Already correct
-            } else if (
-                phoneNumber.startsWith("91") &&
-                phoneNumber.length === 12
-            ) {
-                phoneNumber = `+${phoneNumber}`;
-            } else {
-                phoneNumber = `+91${phoneNumber}`;
-            }
+        console.log(phoneNumber, 'phoneNumber');
 
-            if (!/^\+91[6-9]\d{9}$/.test(phoneNumber)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Please enter a valid Indian mobile number",
-                });
-            }
+        // Detect country based on input (works in ALL environments)
+        if (phoneNumber.startsWith("+1")) {
+            // Already correct US
+        } else if (phoneNumber.startsWith("+91")) {
+            // Already correct India
+        } else if (
+            phoneNumber.startsWith("91") &&
+            phoneNumber.length === 12
+        ) {
+            phoneNumber = `+${phoneNumber}`;
+        } else if (
+            phoneNumber.startsWith("1") &&
+            phoneNumber.length === 11
+        ) {
+            phoneNumber = `+${phoneNumber}`;
+        } else if (/^[6-9]\d{9}$/.test(phoneNumber)) {
+            // 10-digit Indian number
+            phoneNumber = `+91${phoneNumber}`;
+        } else if (/^[2-9]\d{9}$/.test(phoneNumber)) {
+            // 10-digit US number
+            phoneNumber = `+1${phoneNumber}`;
         } else {
-            if (phoneNumber.startsWith("+1")) {
-                // Already correct
-            } else if (
-                phoneNumber.startsWith("1") &&
-                phoneNumber.length === 11
-            ) {
-                phoneNumber = `+${phoneNumber}`;
-            } else {
-                phoneNumber = `+1${phoneNumber}`;
-            }
-
-            if (!/^\+1[2-9]\d{9}$/.test(phoneNumber)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Please enter a valid US mobile number",
-                });
-            }
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid mobile number",
+            });
         }
 
+        // Final validation — accept EITHER US or India
+        const isIndian = /^\+91[6-9]\d{9}$/.test(phoneNumber);
+        const isUS = /^\+1[2-9]\d{9}$/.test(phoneNumber);
+
+        if (!isIndian && !isUS) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid Indian or US mobile number",
+            });
+        }
 
         // =====================================================
         // CHECK REFERRAL
@@ -661,33 +663,11 @@ export const sendLoginOtp = async (req, res) => {
         // =====================================================
 
         if (referral.status === "Waiting") {
-
-            // -------------------------------------------------
-            // DEVELOPMENT OTP
-            // -------------------------------------------------
-
-            // if (process.env.NODE_ENV === "development") {
-
-            // const developmentOtp = "123456";
-
-            // console.log("====================================");
-            // console.log("DEVELOPMENT LOGIN OTP");
-            // console.log("Mobile:", phoneNumber);
-            // console.log("OTP:", developmentOtp);
-            // console.log("====================================");
-
-            // Change referral status AFTER OTP is sent
-            // referral.status = "Verified";
-            // await referral.save();
-
             return res.status(500).json({
                 success: false,
                 status: "Waiting",
                 message: "Signup to login",
-                // development: true,
             });
-            // }
-
         }
 
         // =====================================================
@@ -699,10 +679,6 @@ export const sendLoginOtp = async (req, res) => {
             const user = await User.findOne({
                 mobile: phoneNumber,
             });
-
-            // -------------------------------------------------
-            // VERIFIED BUT USER DOES NOT EXIST
-            // -------------------------------------------------
 
             if (!user) {
                 return res.status(403).json({
@@ -739,15 +715,15 @@ export const sendLoginOtp = async (req, res) => {
             // SEND LOGIN OTP
             // =================================================
 
+            // DEV bypass
             if (process.env.NODE_ENV === "development") {
-
                 const developmentOtp = "123456";
 
-                // console.log("====================================");
-                // console.log("DEVELOPMENT LOGIN OTP");
-                // console.log("Mobile:", phoneNumber);
-                // console.log("OTP:", developmentOtp);
-                // console.log("====================================");
+                console.log("====================================");
+                console.log("DEVELOPMENT LOGIN OTP");
+                console.log("Mobile:", phoneNumber);
+                console.log("OTP:", developmentOtp);
+                console.log("====================================");
 
                 return res.status(200).json({
                     success: true,
@@ -757,6 +733,26 @@ export const sendLoginOtp = async (req, res) => {
                 });
             }
 
+            // PROD bypass for test number — fixed (string compare)
+            if (
+                process.env.NODE_ENV === "production" &&
+                phoneNumber === "+19600698332"
+            ) {
+                console.log("====================================");
+                console.log("PRODUCTION TEST OTP");
+                console.log("Mobile:", phoneNumber);
+                console.log("OTP:", "123456");
+                console.log("====================================");
+
+                return res.status(200).json({
+                    success: true,
+                    status: "OTP_SENT",
+                    message: "OTP sent successfully",
+                    development: true,
+                });
+            }
+
+            // Real Twilio send
             await twilioClient.verify.v2
                 .services(process.env.TWILIO_VERIFY_SID)
                 .verifications
@@ -764,6 +760,8 @@ export const sendLoginOtp = async (req, res) => {
                     to: phoneNumber,
                     channel: "sms",
                 });
+
+            console.log(phoneNumber, 'phoneNumber');
 
             return res.status(200).json({
                 success: true,
@@ -815,7 +813,6 @@ export const verifyLoginOtp = async (req, res) => {
 
         const otpValue = otp.toString().trim();
 
-        // Validate OTP format
         if (!/^\d{6}$/.test(otpValue)) {
             return res.status(400).json({
                 success: false,
@@ -823,58 +820,47 @@ export const verifyLoginOtp = async (req, res) => {
             });
         }
 
-        // Normalize mobile number
+        // =====================================================
+        // NORMALIZE MOBILE NUMBER (country-agnostic, all envs)
+        // =====================================================
+
         let phoneNumber = mobileNumber.toString().trim();
 
-        if (process.env.NODE_ENV === "development") {
-            if (phoneNumber.startsWith("+91")) {
-                // Already correct
-            } else if (
-                phoneNumber.startsWith("91") &&
-                phoneNumber.length === 12
-            ) {
-                phoneNumber = `+${phoneNumber}`;
-            } else {
-                phoneNumber = `+91${phoneNumber}`;
-            }
-
-            if (!/^\+91[6-9]\d{9}$/.test(phoneNumber)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Please enter a valid Indian mobile number",
-                });
-            }
-        } else if (process.env.NODE_ENV === "production") {
-            if (phoneNumber.startsWith("+1")) {
-                // Already correct
-            } else if (
-                phoneNumber.startsWith("1") &&
-                phoneNumber.length === 11
-            ) {
-                phoneNumber = `+${phoneNumber}`;
-            } else {
-                phoneNumber = `+1${phoneNumber}`;
-            }
-
-            if (!/^\+1[2-9]\d{9}$/.test(phoneNumber)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Please enter a valid US mobile number",
-                });
-            }
+        if (phoneNumber.startsWith("+1")) {
+        } else if (phoneNumber.startsWith("+91")) {
+        } else if (phoneNumber.startsWith("91") && phoneNumber.length === 12) {
+            phoneNumber = `+${phoneNumber}`;
+        } else if (phoneNumber.startsWith("1") && phoneNumber.length === 11) {
+            phoneNumber = `+${phoneNumber}`;
+        } else if (/^[6-9]\d{9}$/.test(phoneNumber)) {
+            phoneNumber = `+91${phoneNumber}`;
+        } else if (/^[2-9]\d{9}$/.test(phoneNumber)) {
+            phoneNumber = `+1${phoneNumber}`;
         } else {
-            return res.status(500).json({
+            return res.status(400).json({
                 success: false,
-                message: "Unsupported server environment",
+                message: "Please enter a valid mobile number",
             });
         }
 
-        // Check existing lock
+        const isIndian = /^\+91[6-9]\d{9}$/.test(phoneNumber);
+        const isUS = /^\+1[2-9]\d{9}$/.test(phoneNumber);
+
+        if (!isIndian && !isUS) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter a valid Indian or US mobile number",
+            });
+        }
+
+        // =====================================================
+        // CHECK EXISTING LOCK
+        // =====================================================
+
         const attemptData = otpAttempts.get(phoneNumber);
 
         if (attemptData?.lockedUntil) {
-            const remainingTime =
-                attemptData.lockedUntil - Date.now();
+            const remainingTime = attemptData.lockedUntil - Date.now();
 
             if (remainingTime > 0) {
                 return res.status(429).json({
@@ -882,23 +868,19 @@ export const verifyLoginOtp = async (req, res) => {
                     message:
                         "Too many incorrect OTP attempts. Please try again after 10 minutes.",
                     attemptsRemaining: 0,
-                    lockedUntil: new Date(
-                        attemptData.lockedUntil
-                    ).toISOString(),
-                    retryAfterSeconds: Math.ceil(
-                        remainingTime / 1000
-                    ),
+                    lockedUntil: new Date(attemptData.lockedUntil).toISOString(),
+                    retryAfterSeconds: Math.ceil(remainingTime / 1000),
                 });
             }
 
-            // Lock expired: reset attempts
             otpAttempts.delete(phoneNumber);
         }
 
-        // Find user
-        const user = await User.findOne({
-            mobile: phoneNumber,
-        });
+        // =====================================================
+        // FIND USER
+        // =====================================================
+
+        const user = await User.findOne({ mobile: phoneNumber });
 
         if (!user) {
             return res.status(404).json({
@@ -908,7 +890,10 @@ export const verifyLoginOtp = async (req, res) => {
             });
         }
 
-        // Account status
+        // =====================================================
+        // ACCOUNT STATUS
+        // =====================================================
+
         if (user.refApprove === "Waiting") {
             return res.status(403).json({
                 success: false,
@@ -920,56 +905,65 @@ export const verifyLoginOtp = async (req, res) => {
         if (user.refApprove === "Blocked") {
             return res.status(403).json({
                 success: false,
-                message:
-                    "Your account is blocked. Please contact support.",
+                message: "Your account is blocked. Please contact support.",
             });
         }
 
         if (user.refApprove === "Rejected") {
             return res.status(403).json({
                 success: false,
-                message:
-                    "Your account is Rejected. Please contact referrer.",
+                message: "Your account is Rejected. Please contact referrer.",
             });
         }
 
-        // Verify OTP
+        // =====================================================
+        // VERIFY OTP
+        // =====================================================
+
         let isOtpValid = false;
 
         if (process.env.NODE_ENV === "development") {
             isOtpValid = otpValue === "123456";
         } else if (process.env.NODE_ENV === "production") {
-            const verificationCheck =
-                await twilioClient.verify.v2
-                    .services(process.env.TWILIO_VERIFY_SID)
-                    .verificationChecks
-                    .create({
-                        to: phoneNumber,
-                        code: otpValue,
-                    });
 
-            isOtpValid =
-                verificationCheck.status === "approved";
+            // PROD bypass for test number — fixed string compare
+            if (phoneNumber === "+19600698332") {
+                isOtpValid = otpValue === "123456";
+            } else {
+                const verificationCheck =
+                    await twilioClient.verify.v2
+                        .services(process.env.TWILIO_VERIFY_SID)
+                        .verificationChecks
+                        .create({
+                            to: phoneNumber,
+                            code: otpValue,
+                        });
+
+                isOtpValid = verificationCheck.status === "approved";
+            }
+        } else {
+            return res.status(500).json({
+                success: false,
+                message: "Unsupported server environment",
+            });
         }
 
-        // Handle incorrect OTP
+        // =====================================================
+        // HANDLE INCORRECT OTP
+        // =====================================================
+
         if (!isOtpValid) {
-            const currentData =
-                otpAttempts.get(phoneNumber) || {
-                    attempts: 0,
-                    lockedUntil: null,
-                };
+            const currentData = otpAttempts.get(phoneNumber) || {
+                attempts: 0,
+                lockedUntil: null,
+            };
 
             currentData.attempts += 1;
 
-            const attemptsRemaining =
-                MAX_OTP_ATTEMPTS - currentData.attempts;
+            const attemptsRemaining = MAX_OTP_ATTEMPTS - currentData.attempts;
 
-            // Third incorrect attempt: lock for 10 minutes
             if (currentData.attempts >= MAX_OTP_ATTEMPTS) {
-                currentData.lockedUntil =
-                    Date.now() + OTP_LOCK_DURATION;
-
+                currentData.lockedUntil = Date.now() + OTP_LOCK_DURATION;
                 otpAttempts.set(phoneNumber, currentData);
 
                 return res.status(429).json({
@@ -977,9 +971,7 @@ export const verifyLoginOtp = async (req, res) => {
                     message:
                         "You have entered an incorrect OTP 3 times. Please try again after 10 minutes.",
                     attemptsRemaining: 0,
-                    lockedUntil: new Date(
-                        currentData.lockedUntil
-                    ).toISOString(),
+                    lockedUntil: new Date(currentData.lockedUntil).toISOString(),
                     retryAfterSeconds: 600,
                 });
             }
@@ -993,16 +985,18 @@ export const verifyLoginOtp = async (req, res) => {
             });
         }
 
-        // Correct OTP: reset failed attempts
         otpAttempts.delete(phoneNumber);
 
-        // Create JWT
-        const token = createJWT(
-            user._id,
-            user.mobile
-        );
+        // =====================================================
+        // CREATE JWT
+        // =====================================================
 
-        // Success response
+        const token = createJWT(user._id, user.mobile);
+
+        // =====================================================
+        // SUCCESS RESPONSE
+        // =====================================================
+
         return res.status(200).json({
             success: true,
             message: "Login successful",
